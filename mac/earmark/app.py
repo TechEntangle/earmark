@@ -1214,13 +1214,18 @@ async def guard(request: Request, call_next):
     """This Mac's own browser is trusted. Everyone else (Tailscale, Wi-Fi) needs a paired-device cookie."""
     local = PH.is_local(request.client.host if request.client else None, request.headers)
     request.state.local = local
+    auth = request.headers.get("authorization") or ""
     if local:
+        if auth.lower().startswith("bearer "):          # the app talking to Earmark on this same Mac
+            with db() as c:
+                dev = PH.device_for(c, auth[7:].strip())
+            if dev:
+                request.state.device = dev
         return await call_next(request)
     path = request.url.path
     if path in _OPEN_PATHS:
         return await call_next(request)
     token = request.cookies.get(PH.COOKIE)
-    auth = request.headers.get("authorization") or ""
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip()
     with db() as c:

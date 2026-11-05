@@ -34,3 +34,4 @@ mobile/ios/Runner/GeneratedPluginRegistrant.*
 *.keystore
 *.jks
 key.properties
+mobile/test_e2e/*.bin
