@@ -558,7 +558,8 @@ async function refreshStatus() {
   const P = ST.pendant, pulse = $('#pulse');
   let state, sub = '', cls = '', tip = '';
   const synced = ST.last_sync_at ? `last synced ${ago(ST.last_sync_at)}` : 'not synced yet';
-  if (P.connected && ST.phase === 'syncing') { state = 'Catching up'; sub = `Copying ${ST.detail}`; cls = 'busy'; tip = 'Copying audio the pendant recorded while it was away'; }
+  if (P.via) { state = ST.paused ? 'Paused' : (P.connected ? 'Recording' : 'Connecting'); sub = `on ${P.via}` + (P.connected && !ST.paused && ST.open_seconds >= 1 ? ` · ${clock(ST.open_seconds)}` : ''); cls = ST.paused ? 'paused' : (P.connected ? 'live' : 'busy'); tip = `Your phone (${P.via}) holds the pendant and sends recordings here. This Mac steps back while it does.`; }
+  else if (P.connected && ST.phase === 'syncing') { state = 'Catching up'; sub = `Copying ${ST.detail}`; cls = 'busy'; tip = 'Copying audio the pendant recorded while it was away'; }
   else if (P.connected && ST.paused) { state = 'Paused'; sub = 'Double-tap to resume'; cls = 'paused'; tip = 'Connected. Nothing is being recorded. Double-tap the pendant or press Resume.'; }
   else if (P.connected && ST.phase === 'recording') { state = 'Recording'; sub = ST.open_seconds >= 1 ? clock(ST.open_seconds) : 'Listening'; cls = 'live'; tip = 'Connected and streaming live to this Mac. Nothing is waiting on the pendant.'; }
   else if (P.connected) { state = 'Connecting'; cls = 'busy'; }

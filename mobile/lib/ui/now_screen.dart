@@ -31,7 +31,10 @@ class _NowScreenState extends State<NowScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ListenableBuilder(listenable: Listenable.merge([widget.c, widget.c.pendant]), builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final c = widget.c, p = c.pendant, t = context.t, tt = Theme.of(context).textTheme;
     final (label, sub, color, pulse) = _state(c, t);
     return Scaffold(
@@ -73,7 +76,7 @@ class _NowScreenState extends State<NowScreen> {
                   child: FilledButton.icon(
                     key: const Key('pauseBtn'),
                     onPressed: c.togglePause,
-                    style: c.paused ? FilledButton.styleFrom(backgroundColor: t.live) : FilledButton.styleFrom(backgroundColor: t.ink, foregroundColor: t.bg),
+                    style: c.paused ? FilledButton.styleFrom(backgroundColor: t.live, foregroundColor: Colors.white) : FilledButton.styleFrom(backgroundColor: t.ink, foregroundColor: t.bg),
                     icon: Icon(c.paused ? Icons.fiber_manual_record : Icons.pause),
                     label: Text(c.paused ? 'Resume' : 'Pause'),
                   ),

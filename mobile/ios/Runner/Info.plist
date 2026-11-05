@@ -66,5 +66,20 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Earmark connects to your Omi pendant to record and sync your conversations.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Earmark sends recordings to Earmark on your own Mac.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

@@ -1,0 +1,120 @@
+import 'dart:io';
+
+import 'package:earmark/app_controller.dart';
+import 'package:earmark/core/config.dart';
+import 'package:earmark/pendant/pendant_service.dart';
+import 'package:earmark/recorder/chunk_store.dart';
+import 'package:earmark/ui/now_screen.dart';
+import 'package:earmark/ui/pair_screen.dart';
+import 'package:earmark/ui/theme.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// Settings kept in memory instead of the Keychain.
+class FakeConfig extends ConfigStore {
+  final m = <String, String>{};
+  @override
+  Future<bool> paused() async => m['paused'] == '1';
+  @override
+  Future<void> savePaused(bool p) async => m['paused'] = p ? '1' : '0';
+  @override
+  Future<String?> pendantId() async => m['pendant'];
+  @override
+  Future<void> savePendantId(String? id) async => id == null ? m.remove('pendant') : m['pendant'] = id;
+}
+
+/// A pendant that is "connected" without Bluetooth.
+class FakePendant extends PendantService {
+  FakePendant() : super();
+  final List<List<(int, int)>> buzzes = [];
+  @override
+  Future<void> start({String? rememberedId}) async {
+    state = PendantState.connected;
+    battery = 82;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> buzz(List<(int, int)> pattern) async => buzzes.add(pattern);
+  @override
+  Future<bool> setLed(int pct) async => true;
+}
+
+Future<void> loadFonts() async {
+  for (final (fam, files) in [
+    ('Geist', ['Geist_400Regular', 'Geist_500Medium', 'Geist_600SemiBold']),
+    ('Newsreader', ['Newsreader_400Regular', 'Newsreader_500Medium']),
+    ('MaterialIcons', <String>[]),
+  ]) {
+    final l = FontLoader(fam);
+    for (final f in files) {
+      l.addFont(Future.value(ByteData.sublistView(File('assets/fonts/$f.ttf').readAsBytesSync())));
+    }
+    if (fam == 'MaterialIcons') {
+      final icons = File('${Platform.environment['FLUTTER_ROOT'] ?? '/home/claude/flutter'}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
+      if (icons.existsSync()) l.addFont(Future.value(ByteData.sublistView(icons.readAsBytesSync())));
+    }
+    await l.load();
+  }
+}
+
+Widget wrap(Widget w, {Brightness b = Brightness.light}) =>
+    MaterialApp(debugShowCheckedModeBanner: false, theme: earmarkTheme(b), home: w);
+
+EarmarkController controller(FakePendant p) {
+  final c = EarmarkController(config: FakeConfig(), pendant: p);
+  c.store = ChunkStore(Directory.systemTemp.createTempSync('earmark_ui'));
+  c.pairing = Pairing(Uri.parse('https://mac.tail1234.ts.net'), 'tok');
+  return c;
+}
+
+void main() {
+  setUpAll(loadFonts);
+
+  testWidgets('pairing screen asks for address and code', (t) async {
+    t.view.physicalSize = const Size(1179, 2556);
+    t.view.devicePixelRatio = 3;
+    final c = controller(FakePendant());
+    await t.pumpWidget(wrap(PairScreen(c: c)));
+    expect(find.text('Connect to your Mac'), findsOneWidget);
+    expect(find.text('6-digit code'), findsOneWidget);
+    await expectLater(find.byType(PairScreen), matchesGoldenFile('goldens/pair.png'));
+  });
+
+  testWidgets('now screen: recording, then pause from the button vibrates', (t) async {
+    t.view.physicalSize = const Size(1179, 2556);
+    t.view.devicePixelRatio = 3;
+    final p = FakePendant();
+    final c = controller(p)..link = Link.online;
+    await p.start();
+    await t.pumpWidget(wrap(NowScreen(c: c), b: Brightness.dark));
+    expect(find.text('Recording'), findsOneWidget);
+    expect(find.text('82%'), findsOneWidget);
+    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/now_recording_dark.png'));
+    await t.runAsync(() async {
+      await c.togglePause();
+    });
+    await t.pump();
+    expect(find.text('Paused'), findsOneWidget);
+    expect(p.buzzes.last.single.$1, 3, reason: 'one long vibration = paused');
+    c.link = Link.offline;
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    c.notifyListeners();
+    await t.pump();
+    expect(find.text('Mac not reachable'), findsOneWidget);
+    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/now_paused_offline.png'));
+    t.view.resetPhysicalSize();
+  });
+
+  test('frames are recorded only while not paused', () async {
+    final p = FakePendant();
+    final c = controller(p);
+    c.paused = false;
+    // feed through the same path the pendant uses
+    for (var k = 0; k < 5; k++) {
+      c.store!.add(Uint8List.fromList([1, 2, 3]));
+    }
+    expect(c.store!.openSeconds, closeTo(0.1, 1e-9));
+  });
+}

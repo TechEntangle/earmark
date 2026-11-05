@@ -12,8 +12,9 @@ import 'protocol.dart';
 enum PendantState { idle, bluetoothOff, needsPermission, searching, connecting, connected }
 
 class PendantService extends ChangeNotifier {
-  final FlutterReactiveBle ble;
-  PendantService({FlutterReactiveBle? ble}) : ble = ble ?? FlutterReactiveBle();
+  FlutterReactiveBle? _ble;
+  PendantService({FlutterReactiveBle? ble}) : _ble = ble; // ignore: prefer_initializing_formals
+  FlutterReactiveBle get ble => _ble ??= FlutterReactiveBle(); // created on first use
 
   PendantState state = PendantState.idle;
   String? deviceId;
