@@ -547,3 +547,84 @@ def test_phone_settings_and_audio_seek(page: Page, server):
     req = urllib.request.Request(server + f"/api/sessions/{sid}/audio", headers={"Range": "bytes=0-99"})
     with urllib.request.urlopen(req, timeout=10) as r:          # iPhone Safari needs ranged audio to play and seek
         assert r.status == 206 and len(r.read()) == 100
+
+
+# ---------------------------------------------------------------- the phone app
+def _app_call(server, path, token=None, method="POST", body=None, raw=None, headers=None):
+    h = {"Host": "mac.tail1234.ts.net", "X-Forwarded-For": "100.64.0.9"}
+    h.update(headers or {})
+    if token:
+        h["Authorization"] = f"Bearer {token}"
+    data = None
+    if raw is not None:
+        data = raw
+        h["Content-Type"] = "application/octet-stream"
+    elif body is not None:
+        data = json.dumps(body).encode()
+        h["Content-Type"] = "application/json"
+    req = urllib.request.Request(server + path, data=data, method=method, headers=h)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read() or b"{}")
+
+
+def _opus_chunk(seconds: float):
+    import opuslib
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from earmark import appsync, fake_pendant
+    f = fake_pendant.fake()
+    frames = [f.next_frame("offline") for _ in range(int(seconds * 50))]
+    return appsync.pack_frames(frames)
+
+
+def test_phone_app_pairs_uploads_and_takes_the_pendant(server):
+    # pairing with a one-time code made on the Mac
+    assert _app_call(server, "/api/app/heartbeat", body={})[0] == 401
+    code = call(server, "/api/phone/code", "POST", {})["code"]
+    st, r = _app_call(server, "/api/app/pair", body={"code": code, "name": "Pixel 9", "platform": "android"})
+    assert st == 200 and r["token"]
+    tok = r["token"]
+    assert _app_call(server, "/api/app/pair", body={"code": code, "name": "x"})[0] == 400
+    # the phone says it has the pendant: the Mac lets go and shows the phone's state
+    st, r = _app_call(server, "/api/app/heartbeat", tok, body={"holds_pendant": True, "pendant_connected": True,
+                                                                "battery": 71, "state": "recording", "session_seconds": 12})
+    assert st == 200 and "settings" in r and r["last_seq"] == 0
+    wait_for(lambda: (call(server, "/api/status")["pendant"].get("via") or "").startswith("Pixel 9"), 20, "Mac shows the phone holds the pendant")
+    s = call(server, "/api/status")
+    assert s["pendant"]["battery"] == 71 and s["phase"] in ("recording", "paused")
+    # audio recorded on the phone becomes a conversation on the Mac
+    n0 = len(call(server, "/api/sessions"))
+    t0 = time.time() - 600
+    st, r = _app_call(server, "/api/app/audio", tok, raw=_opus_chunk(8),
+                      headers={"X-Earmark-Start": str(t0), "X-Earmark-Seq": "1", "X-Earmark-Codec": "21"})
+    assert st == 200 and r["frames"] == 400
+    # the same chunk again (a retry) is acknowledged and ignored
+    st, r = _app_call(server, "/api/app/audio", tok, raw=_opus_chunk(8),
+                      headers={"X-Earmark-Start": str(t0), "X-Earmark-Seq": "1", "X-Earmark-Codec": "21"})
+    assert r.get("duplicate")
+    # a later chunk after a long break closes the first conversation
+    _app_call(server, "/api/app/audio", tok, raw=_opus_chunk(4),
+              headers={"X-Earmark-Start": str(t0 + 400), "X-Earmark-Seq": "2", "X-Earmark-Codec": "21"})
+    ss = wait_for(lambda: [x for x in call(server, "/api/sessions") if x.get("source") == "phone"] or None, 30, "phone session")
+    assert len(call(server, "/api/sessions")) > n0
+    assert abs(ss[-1]["started_at"] - t0) < 2
+    # earmark and pause from the phone's button
+    st, r = _app_call(server, "/api/app/event", tok, body={"type": "earmark", "at": t0 + 3})
+    assert st == 200
+    st, r = _app_call(server, "/api/app/event", tok, body={"type": "pause"})
+    assert r["paused"] is True
+    _app_call(server, "/api/app/event", tok, body={"type": "resume"})
+    # the phone lets go: the Mac takes the pendant back
+    _app_call(server, "/api/app/heartbeat", tok, body={"holds_pendant": False})
+    call(server, "/api/sync", "POST", {})
+    try:
+        wait_for(lambda: not call(server, "/api/status")["pendant"].get("via") and call(server, "/api/status")["pendant"]["connected"],
+                 40, "Mac reconnects to the pendant")
+    except AssertionError:
+        st = call(server, "/api/status")
+        raise AssertionError(f"phase={st['phase']} detail={st['detail']} pendant={st['pendant']} log={[x['msg'] for x in st['log'][:10]]}")
+    # bad input is refused
+    assert _app_call(server, "/api/app/audio", tok, raw=b"\x00\x05ab",
+                     headers={"X-Earmark-Start": str(time.time()), "X-Earmark-Seq": "9"})[0] == 400

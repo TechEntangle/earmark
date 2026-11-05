@@ -452,7 +452,7 @@ async def _wait_wake(seconds: float):
 async def connected_session(dev, cfg: dict):
     S.set("connecting", "connecting to the pendant")
     async with PEND.open_pendant(dev) as pd:
-        S.pendant.update(connected=True, seen_at=int(time.time()))
+        S.pendant.update(connected=True, seen_at=int(time.time()), via=None)
         await _refresh_device_info(pd)
         if await pd.sync_clock():
             S.pendant["rtc_valid"] = True
@@ -1298,7 +1298,12 @@ def api_app_heartbeat(request: Request, body: dict):
           "state": str(body.get("state") or ""), "session_seconds": body.get("session_seconds"),
           "queued_seconds": body.get("queued_seconds"), "app_version": str(body.get("app_version") or "")[:20]}
     first = dev["id"] not in S.app_state or not S.app_state[dev["id"]].get("holds_pendant")
+    was_holding = not first
     S.app_state[dev["id"]] = st
+    if was_holding and not st["holds_pendant"] and not _phone_holder():
+        S.pendant.update(via=None, connected=bool(S.pd))
+        S.say(f"{st['device_name']} let go of the pendant")
+        S.wake.set()
     if st["holds_pendant"]:
         _phone_status_into_state(st)
         if first:
