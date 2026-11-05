@@ -1,0 +1,1359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Earmark</title>
+<link rel="icon" href="/static/icon.png">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Earmark">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F3F4F6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12161B" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F4F6; --rail:#ECEEF1; --surface:#FFFFFF; --sunk:#F7F8F9; --hover:#EEF0F3;
+  --line:#E1E4E8; --line-2:#CDD2D8;
+  --ink:#14181D; --ink-2:#555E68; --ink-3:#8A929B;
+  --live:#2F6FEB; --live-soft:#E6EEFD; --live-ink:#1D4FB8;
+  --due:#B76E12; --due-soft:#FBF0E1; --ok:#23845A; --ok-soft:#E3F3EA; --bad:#B4362F; --bad-soft:#FBE9E7;
+  --k-meeting:#2F6FEB; --k-call:#7A5AE0; --k-conversation:#3A9C8C; --k-note:#C77A1C; --k-ambient:#A8AFB7;
+  --serif:"Newsreader",Georgia,serif; --sans:"Geist",-apple-system,system-ui,sans-serif;
+  --r:10px; --r-sm:7px;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.08);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161B; --rail:#0F1317; --surface:#181D23; --sunk:#151A1F; --hover:#1F252C;
+  --line:#262D35; --line-2:#36404A;
+  --ink:#E7EBEF; --ink-2:#A3ADB8; --ink-3:#6C7783;
+  --live:#5B91F5; --live-soft:#18263D; --live-ink:#9DBDF9;
+  --due:#E3A04A; --due-soft:#2E2414; --ok:#4CBF8A; --ok-soft:#14291F; --bad:#EE7B73; --bad-soft:#331A18;
+  --k-ambient:#56606A;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  --bg:#12161B; --rail:#0F1317; --surface:#181D23; --sunk:#151A1F; --hover:#1F252C;
+  --line:#262D35; --line-2:#36404A; --ink:#E7EBEF; --ink-2:#A3ADB8; --ink-3:#6C7783;
+  --live:#5B91F5; --live-soft:#18263D; --live-ink:#9DBDF9;
+  --due:#E3A04A; --due-soft:#2E2414; --ok:#4CBF8A; --ok-soft:#14291F; --bad:#EE7B73; --bad-soft:#331A18;
+  --k-ambient:#56606A; --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font:14.5px/1.5 var(--sans);-webkit-font-smoothing:antialiased;font-feature-settings:"ss01"}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--live);box-shadow:0 0 0 3px var(--live-soft)}
+:focus-visible{outline:2px solid var(--live);outline-offset:2px;border-radius:4px}
+.num{font-variant-numeric:tabular-nums}
+[hidden]{display:none!important}
+.main:focus{outline:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ============ shell */
+.shell{display:grid;grid-template-columns:232px minmax(0,1fr);height:100vh;height:100dvh}
+.rail{background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:18px 12px 14px;min-height:0}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
+.brand svg{flex:none}
+.brand b{font:500 19px/1 var(--serif);letter-spacing:-.01em}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav a{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:var(--r-sm);color:var(--ink-2);font-weight:500}
+.nav a:hover{background:var(--hover);color:var(--ink)}
+.nav a.on{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.nav a svg{flex:none;opacity:.85}
+.nav .count{margin-left:auto;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.nav .count.due{color:var(--due);font-weight:600}
+.nav .kbd{margin-left:auto;font-size:11px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:5px;padding:0 5px}
+.rail .grow{flex:1}
+
+.dev-top{display:flex;align-items:center;gap:9px}
+.pulse{width:10px;height:10px;border-radius:50%;background:var(--ink-3);flex:none;position:relative}
+.pulse.live{background:var(--live)}
+.pulse.live::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--live);opacity:.35;animation:ring 2s ease-out infinite}
+.pulse.paused{background:transparent;box-shadow:inset 0 0 0 2px var(--ink-3)}
+.pulse.busy{background:var(--due)}
+@keyframes ring{0%{transform:scale(.6);opacity:.5}100%{transform:scale(1.5);opacity:0}}
+@media (prefers-reduced-motion:reduce){.pulse.live::after{animation:none}}
+.dev-state{font-weight:600;font-size:13.5px}
+.dev-sub{font-size:12.5px;color:var(--ink-2);line-height:1.4}
+.batt{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-2)}
+.batt.low{color:var(--bad)}
+.dev-actions{display:flex;gap:6px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:7px 12px;border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--surface);font-weight:500;font-size:13.5px;white-space:nowrap}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.btn.primary:hover{opacity:.9;background:var(--ink)}
+.btn.live{background:var(--live);border-color:var(--live);color:#fff}
+.btn.ghost{border-color:transparent}
+.btn.ghost:hover{background:var(--hover)}
+.btn.danger{color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn.wide{flex:1}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.work{font-size:12px;color:var(--ink-2);display:flex;flex-direction:column;gap:6px}
+.work .bar,.bar{height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--live);transition:width .5s}
+.work:empty{display:none}
+
+.col{display:grid;grid-template-rows:auto minmax(0,1fr);min-width:0;min-height:0}
+.top{position:relative;display:flex;align-items:center;gap:16px;height:56px;padding:0 20px 0 40px;border-bottom:1px solid var(--line);background:var(--bg)}
+.today-meta{flex:1 1 auto;display:flex;align-items:baseline;gap:10px;min-width:0;white-space:nowrap;overflow:hidden}
+.today-meta b{font-weight:600;font-size:13.5px}
+.today-meta span{font-size:12.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}
+.hsearch{flex:0 1 380px;display:flex;align-items:center;gap:9px;height:34px;padding:0 10px 0 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--surface);color:var(--ink-3);font-size:13.5px;text-align:left;min-width:0}
+.hsearch:hover{border-color:var(--ink-3);color:var(--ink-2)}
+.hsearch .ph{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hsearch .kbd{font-size:11px;border:1px solid var(--line-2);border-radius:5px;padding:0 5px}
+.hright{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:max-content}
+@media (max-width:1180px){ .today-meta{display:none} .hsearch{flex:1 1 auto} }
+.pill{display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);min-width:0;white-space:nowrap}
+.pill .dev-sub{color:var(--ink-3);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pill .dev-sub:empty{display:none}
+.pill .dev-sub::before{content:"·";margin-right:8px;color:var(--line-2)}
+.pill .batt{margin-left:2px;padding-left:8px;border-left:1px solid var(--line)}
+.pill .batt:empty{display:none}
+.hright .btn{height:34px}
+.phonei{position:relative;display:grid;place-items:center;width:34px;height:34px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-3);flex:none}
+.phonei.live{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,var(--line))}
+.phonei i{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2px var(--surface);display:none}
+.phonei.live i{display:block}
+.main{overflow:auto;min-width:0;position:relative}
+.page{max-width:1180px;margin:0 auto;padding:30px 40px 120px}
+.page.narrow{max-width:860px}
+
+/* ============ page head */
+.head{display:flex;align-items:flex-end;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.head h1{font:400 34px/1.1 var(--serif);letter-spacing:-.015em}
+.head .sub{color:var(--ink-2);font-size:13.5px;margin-top:6px}
+.head .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.daynav{display:flex;gap:4px}
+.icon-btn{width:32px;height:32px;display:grid;place-items:center;border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--surface);color:var(--ink-2)}
+.icon-btn:hover{background:var(--hover);color:var(--ink)}
+.icon-btn[disabled]{opacity:.35;pointer-events:none}
+
+/* ============ day tape (the one bold element) */
+.tape{position:relative;height:58px;margin:4px 0 30px}
+.tape-track{position:absolute;left:0;right:0;top:14px;height:28px;border-radius:6px;border:1px solid var(--line);background:var(--surface)}
+.tape-grid{position:absolute;top:15px;height:26px;width:1px;background:var(--line)}
+.tape-block{position:absolute;top:14px;height:28px;border-radius:4px;min-width:6px;box-shadow:0 0 0 1px var(--surface);background:var(--k-conversation);opacity:.9;cursor:pointer;transition:transform .12s, opacity .12s}
+.tape-block:hover,.tape-block:focus-visible{transform:scaleY(1.18);opacity:1;z-index:2}
+.tape-block.meeting{background:var(--k-meeting)} .tape-block.call{background:var(--k-call)}
+.tape-block.note_to_self{background:var(--k-note)} .tape-block.ambient{background:var(--k-ambient)}
+.tape-block.pending{background:var(--line-2)}
+.tape-now{position:absolute;top:8px;height:40px;width:2px;pointer-events:none;background:var(--live);border-radius:1px}
+.tape-now::before{content:"";position:absolute;top:-4px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--live)}
+.tape-mark{position:absolute;top:2px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid var(--live);transform:translateX(-6px);pointer-events:none}
+.tape-hours{position:absolute;left:0;right:0;top:46px;font-size:11px;color:var(--ink-3)}
+.tape-hours span{position:absolute;transform:translateX(-50%)}
+.tape-hours span:first-child{transform:none}
+.tape-hours span:last-child{transform:translateX(-100%)}
+.tape{overflow-x:clip;overflow-y:visible}
+.tape-tip{position:absolute;top:-14px;transform:translate(-50%,-100%);background:var(--ink);color:var(--bg);font-size:12px;padding:5px 8px;border-radius:6px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .12s;z-index:5}
+
+/* ============ today layout */
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:36px}
+.brief{margin-bottom:34px}
+.brief .headline{font:400 25px/1.3 var(--serif);letter-spacing:-.01em;margin-bottom:10px;max-width:40ch}
+.brief p{font:400 17px/1.6 var(--serif);color:var(--ink);max-width:64ch}
+.brief .meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--ink-3)}
+.highlights{list-style:none;margin-top:16px;display:flex;flex-direction:column;gap:8px;max-width:64ch}
+.highlights li{display:flex;gap:10px;font-size:14.5px}
+.highlights li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-3);margin-top:8px;flex:none}
+.highlights a{border-bottom:1px solid var(--line-2)}
+.highlights a:hover{border-color:var(--ink)}
+.brief-empty{border:1px dashed var(--line-2);border-radius:var(--r);padding:18px 20px;color:var(--ink-2);font-size:14px;max-width:64ch}
+.brief-empty b{color:var(--ink);font-weight:600}
+
+.section-title{display:flex;align-items:baseline;gap:10px;font-size:13px;font-weight:600;color:var(--ink-2);margin:0 0 12px}
+.section-title .n{color:var(--ink-3);font-weight:400}
+.section-title .r{margin-left:auto;font-weight:400}
+
+/* conversation timeline */
+.timeline{display:flex;flex-direction:column}
+.conv{display:grid;grid-template-columns:62px 14px minmax(0,1fr);gap:0 14px;padding:0;text-align:left;width:100%;border-radius:var(--r)}
+.conv .time{font-size:13px;color:var(--ink-2);padding-top:15px;text-align:right;font-variant-numeric:tabular-nums}
+.conv .spine{position:relative;display:flex;justify-content:center}
+.conv .spine::before{content:"";position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.conv:first-child .spine::before{top:20px} .conv:last-child .spine::before{bottom:calc(100% - 20px)}
+.conv .knot{position:relative;margin-top:19px;width:10px;height:10px;border-radius:50%;background:var(--k-conversation);box-shadow:0 0 0 3px var(--bg)}
+.conv .knot.meeting{background:var(--k-meeting)} .conv .knot.call{background:var(--k-call)} .conv .knot.note_to_self{background:var(--k-note)} .conv .knot.ambient{background:var(--k-ambient)}
+.conv .knot.pending{background:var(--surface);box-shadow:0 0 0 3px var(--bg),inset 0 0 0 2px var(--line-2)}
+.conv .body{padding:11px 14px 14px;margin:2px 0;border-radius:var(--r);border:1px solid transparent}
+.conv:hover .body{background:var(--surface);border-color:var(--line)}
+.conv .t{font-weight:600;font-size:15px;line-height:1.35}
+.conv .g{color:var(--ink-2);font-size:13.5px;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-2);background:var(--sunk);border:1px solid var(--line);border-radius:999px;padding:1px 9px;white-space:nowrap}
+.chip.task{color:var(--due);background:var(--due-soft);border-color:transparent}
+.chip.work{color:var(--live-ink);background:var(--live-soft);border-color:transparent}
+.chip.err{color:var(--bad);background:var(--bad-soft);border-color:transparent}
+
+/* side panel cards */
+.side{display:flex;flex-direction:column;gap:22px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.card .section-title{margin-bottom:10px}
+.empty-line{font-size:13.5px;color:var(--ink-3)}
+
+/* ============ tasks */
+.task{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:4px 10px;align-items:start;padding:9px 6px;border-radius:var(--r-sm)}
+.task + .task{border-top:1px solid var(--line)}
+.task:hover{background:var(--hover)}
+.check{width:18px;height:18px;margin-top:2px;border-radius:5px;border:1.5px solid var(--line-2);display:grid;place-items:center;background:var(--surface);transition:background .12s,border-color .12s}
+.check:hover{border-color:var(--ok)}
+.check svg{opacity:0}
+.task.done .check{background:var(--ok);border-color:var(--ok)}
+.task.done .check svg{opacity:1}
+.task.done .ttext{color:var(--ink-3);text-decoration:line-through;text-decoration-color:var(--line-2)}
+.ttext{font-size:14.5px;line-height:1.4;outline:none;border-radius:4px}
+.ttext[contenteditable="true"]:focus{box-shadow:0 0 0 2px var(--live-soft)}
+.tmeta{grid-column:2/4;display:flex;gap:4px 14px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink-3)}
+.tmeta .who{color:var(--ink-2);font-weight:500}
+.tmeta .due{color:var(--ink-2)}
+.tmeta .due.over{color:var(--bad);font-weight:600}
+.tmeta .due.soon{color:var(--due);font-weight:600}
+.tmeta a.src{color:var(--ink-3);border-bottom:1px solid transparent}
+.tmeta a.src:hover{color:var(--ink);border-color:var(--line-2)}
+.tactions{display:flex;gap:2px;opacity:0;transition:opacity .12s}
+.task:hover .tactions,.task:focus-within .tactions{opacity:1}
+.quote{grid-column:2/4;font:italic 400 14px/1.45 var(--serif);color:var(--ink-2);border-left:2px solid var(--line-2);padding-left:10px;margin-top:2px}
+.looks-done{grid-column:2/4;background:var(--ok-soft);border-radius:var(--r-sm);padding:8px 10px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.looks-done span{flex:1;min-width:200px}
+.group{margin-bottom:26px}
+.group h3{font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:6px;display:flex;gap:8px;align-items:baseline}
+.group h3 .n{color:var(--ink-3);font-weight:400}
+.group.over h3{color:var(--bad)}
+.addtask{display:flex;gap:8px;margin-bottom:24px}
+.addtask input{flex:1;min-width:0}
+.addtask input[type=date]{flex:0 0 170px}
+.seg{display:inline-flex;max-width:100%;overflow-x:auto;scrollbar-width:none;background:var(--sunk);border:1px solid var(--line);border-radius:var(--r-sm);padding:2px}
+.seg button{padding:5px 12px;border-radius:5px;font-size:13px;color:var(--ink-2);font-weight:500}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+
+/* ============ conversation */
+.crumbs{font-size:13px;color:var(--ink-3);margin-bottom:14px;display:flex;gap:6px;align-items:center}
+.crumbs a:hover{color:var(--ink)}
+.ctitle{font:400 32px/1.15 var(--serif);letter-spacing:-.015em;outline:none;border-radius:6px;margin-bottom:10px}
+.ctitle:focus{box-shadow:0 0 0 3px var(--live-soft)}
+.cmeta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--ink-2);margin-bottom:22px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:24px}
+.tabs button{padding:9px 14px;font-weight:500;color:var(--ink-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--ink);border-color:var(--ink)}
+.notes h4{font-size:13px;font-weight:600;color:var(--ink-2);margin:24px 0 8px}
+.notes p.sum{font:400 18px/1.6 var(--serif);max-width:66ch}
+.notes ul{list-style:none;display:flex;flex-direction:column;gap:6px;max-width:66ch}
+.notes ul li{padding-left:16px;position:relative;font-size:15px}
+.notes ul li::before{content:"";position:absolute;left:2px;top:9px;width:5px;height:5px;border-radius:50%;background:var(--ink-3)}
+.decision{display:flex;gap:10px;align-items:flex-start;font-size:15px;padding:8px 12px;background:var(--sunk);border-radius:var(--r-sm);border:1px solid var(--line);max-width:66ch;margin-bottom:6px}
+.decision svg{flex:none;margin-top:3px;color:var(--ok)}
+.tline{display:grid;grid-template-columns:54px minmax(0,1fr);gap:14px;padding:5px 8px;border-radius:var(--r-sm);cursor:pointer}
+.tline:hover{background:var(--hover)}
+.tline.marked{box-shadow:inset 3px 0 0 var(--live);background:color-mix(in srgb,var(--live-soft) 55%,transparent)}
+.tline.mark-start .ts::after{content:"";display:inline-block;margin-left:5px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--live);vertical-align:1px}
+.moments{display:flex;flex-direction:column;gap:8px;max-width:66ch}
+.moment{display:grid;grid-template-columns:54px minmax(0,1fr);gap:12px;text-align:left;padding:10px 12px;border-radius:var(--r-sm);background:var(--live-soft);border:1px solid transparent}
+.moment:hover{border-color:var(--live)}
+.moment .ts{font-size:12px;color:var(--live-ink);font-weight:600;padding-top:3px}
+.moment .tx{font:400 16px/1.5 var(--serif)}
+.chip.mark{color:var(--live-ink);background:var(--live-soft);border-color:transparent}
+.tline.now{background:var(--live-soft)}
+.tline .ts{font-size:12px;color:var(--ink-3);padding-top:3px;font-variant-numeric:tabular-nums}
+.tline .tx{font:400 16.5px/1.55 var(--serif);max-width:70ch}
+.tag{font:500 11px/1 var(--sans);color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:2px 5px;margin-left:6px;vertical-align:2px;white-space:nowrap}
+/* speakers */
+:root{--s1:#2F6FEB;--s2:#C2410C;--s3:#0F8A6A;--s4:#9333EA;--s5:#B8860B;--s6:#DB2777;--s7:#0E7490;--s8:#64748B}
+.spk-panel{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:14px 16px;margin-bottom:22px}
+.spk-panel .ph{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.spk-panel .ph b{font-weight:600}
+.spk-panel .ph span{font-size:12.5px;color:var(--ink-3)}
+.spk-panel .ph .btn{margin-left:auto}
+.spk-row{display:grid;grid-template-columns:12px minmax(120px,220px) minmax(0,1fr) auto;gap:6px 12px;align-items:center;padding:7px 0;border-top:1px solid var(--line)}
+.spk-row:first-of-type{border-top:0}
+.sdot{width:10px;height:10px;border-radius:50%;background:var(--c,var(--s8))}
+.spk-row input.spk-name{padding:5px 9px;font-weight:500}
+.spk-row input.spk-name::placeholder{color:var(--ink-3);font-weight:400}
+.spk-meta{display:flex;align-items:center;gap:10px;min-width:0;font-size:12.5px;color:var(--ink-2)}
+.spk-meta .tbar{flex:1;max-width:160px;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.spk-meta .tbar i{display:block;height:100%;background:var(--c,var(--s8))}
+.spk-ask{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2);flex-wrap:wrap}
+.spk-ask b{color:var(--ink);font-weight:600}
+.spk-tag{font-size:11.5px;padding:1px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok)}
+.spk-tag.sug{background:var(--due-soft);color:var(--due)}
+.spk-acts{display:flex;gap:4px;justify-content:flex-end}
+.spk-note{font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding:9px 12px;border-radius:var(--r-sm);background:var(--live-soft)}
+.spk-note .btn{margin-left:auto}
+.spk-head{display:flex;align-items:center;gap:8px;padding:12px 8px 2px 76px}
+.spk-chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--c,var(--ink-2));padding:2px 8px 2px 6px;border-radius:999px}
+.spk-chip:hover{background:var(--hover)}
+.spk-chip .sdot{width:8px;height:8px}
+.spk-chip em{font-style:normal;font-weight:400;color:var(--ink-3)}
+.tline{position:relative}
+.splitbtn{position:absolute;right:6px;top:5px;font-size:11.5px;color:var(--ink-3);border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:1px 9px;opacity:0;transition:opacity .12s}
+.tline:hover .splitbtn,.tline.splitting .splitbtn,.splitbtn:focus-visible{opacity:1}
+.tline.splitting{background:var(--sunk);cursor:default}
+.tline.splitting .w{border-radius:4px;padding:0 1px;cursor:pointer}
+.tline.splitting .w:not(.first):hover{background:var(--live);color:#fff;box-shadow:-3px 0 0 var(--live)}
+.tline.splitting .w.first{cursor:default}
+.split-hint{font-size:12.5px;color:var(--live-ink);padding:2px 8px 8px 76px}
+@media (hover:none){.splitbtn{opacity:1}}
+.tline.sel{background:color-mix(in srgb,var(--live-soft) 85%,transparent);box-shadow:inset 3px 0 0 var(--live)}
+.assign{position:sticky;bottom:76px;z-index:5;margin-top:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);padding:10px 12px;box-shadow:var(--shadow)}
+.assign .what{font-size:13px;color:var(--ink-2);flex:1 1 auto;min-width:0;white-space:nowrap}
+.assign .what b{color:var(--ink)}
+.assign input{width:200px;padding:6px 10px}
+.pcard{border:1px solid var(--line);background:var(--surface);border-radius:var(--r);padding:14px 16px;margin:10px 0 14px}
+.pcard h3{font-size:13.5px;font-weight:600;margin-bottom:8px}
+.pstep{font-size:13.5px;color:var(--ink-2);line-height:1.55}
+.pstep b{color:var(--ink)}
+.pstep.ok b{color:var(--ok)}
+.lnk{color:var(--live-ink);text-decoration:underline}
+.pair{display:grid;grid-template-columns:180px minmax(0,1fr);gap:18px;align-items:center}
+.qr{width:180px;height:180px;background:#fff;border-radius:10px;padding:6px;display:grid;place-items:center}
+.qr svg{width:100%;height:100%}
+.bigcode{font:600 34px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.12em;margin:10px 0 4px}
+@media (max-width:860px){.pair{grid-template-columns:1fr}.qr{margin:0 auto}}
+.vlist{border-top:1px solid var(--line);margin-top:6px}
+.vrow{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.vrow input{padding:5px 9px}
+.vmeta{font-size:12.5px;color:var(--ink-2)}
+@media (max-width:860px){.vrow{grid-template-columns:minmax(0,1fr) auto}.vmeta{grid-column:1/3;grid-row:2}}
+.hint-line{font-size:12.5px;color:var(--ink-3);margin:-12px 0 16px}
+@media (max-width:860px){
+  .crumbs{flex-wrap:wrap}
+  /* iPhone zooms into any field with text under 16px and stays zoomed: the page then scrolls sideways */
+  input,select,textarea{font-size:16px}
+  .main{overflow-x:hidden}
+  .seg button{white-space:nowrap}
+  .spk-row{grid-template-columns:12px minmax(0,1fr) auto}
+  .spk-row .spk-meta{grid-column:2/4;grid-row:2}
+  .spk-row .spk-acts{grid-column:3;grid-row:1}
+  .spk-panel .ph{flex-wrap:wrap} .spk-panel .ph span{order:3;flex-basis:100%}
+  .spk-head{padding-left:8px}
+  .assign{bottom:70px} .assign input{flex:1;width:auto}
+}
+.player{position:sticky;bottom:0;margin-top:30px;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow)}
+.play{width:36px;height:36px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}
+.scrub{flex:1;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.scrub input{padding:0;border:0;background:none;accent-color:var(--ink);height:20px}
+.scrub input:focus{box-shadow:none}
+.rate{font-size:12px;font-weight:600;color:var(--ink-2);padding:4px 8px;border-radius:5px;border:1px solid var(--line-2)}
+.notice{background:var(--sunk);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;color:var(--ink-2);font-size:14px;max-width:66ch}
+.notice b{color:var(--ink)}
+
+/* ============ conversations list */
+.filters{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+.filters input{max-width:340px}
+.daygroup{margin-bottom:26px}
+.daygroup h3{font:500 15px/1.3 var(--serif);color:var(--ink);margin-bottom:6px;padding-left:4px}
+.row{display:grid;grid-template-columns:66px minmax(0,1fr) auto;gap:14px;padding:11px 12px;border-radius:var(--r);align-items:start;text-align:left;width:100%}
+.row:hover{background:var(--surface);box-shadow:0 0 0 1px var(--line)}
+.row .time{font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums;padding-top:1px}
+.row .t{font-weight:600}
+.row .g{font-size:13.5px;color:var(--ink-2);margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.row .d{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;padding-top:2px}
+.kdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--k-conversation);margin-right:7px;vertical-align:1px}
+.kdot.meeting{background:var(--k-meeting)} .kdot.call{background:var(--k-call)} .kdot.note_to_self{background:var(--k-note)} .kdot.ambient{background:var(--k-ambient)} .kdot.pending{background:var(--line-2)}
+
+/* ============ settings */
+.set-layout{display:grid;grid-template-columns:180px minmax(0,1fr);gap:36px}
+.set-nav{position:sticky;top:24px;align-self:start;display:flex;flex-direction:column;gap:2px}
+.set-nav a{padding:6px 10px;border-radius:var(--r-sm);color:var(--ink-2);font-size:13.5px}
+.set-nav a:hover{background:var(--hover);color:var(--ink)}
+.set-sec{margin-bottom:34px;scroll-margin-top:24px}
+.set-sec h2{font:400 22px/1.2 var(--serif);margin-bottom:4px}
+.set-sec > p{color:var(--ink-2);font-size:13.5px;margin-bottom:14px;max-width:62ch}
+.field{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,300px);gap:6px 24px;padding:14px 0;border-top:1px solid var(--line);align-items:center}
+.field .lab{font-weight:500}
+.field .hint{font-size:12.5px;color:var(--ink-3);grid-column:1;line-height:1.45}
+.field .ctl{grid-column:2;grid-row:1/3;justify-self:end;width:100%}
+.switch{position:relative;width:40px;height:23px;flex:none;justify-self:end}
+.field .switch.ctl{width:40px}
+.switch input{opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer;margin:0;z-index:1}
+.switch span{position:absolute;inset:0;border-radius:999px;background:var(--line-2);transition:background .15s}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.switch input:checked + span{background:var(--ok)}
+.switch input:checked + span::after{transform:translateX(17px)}
+.switch input:focus-visible + span{outline:2px solid var(--live);outline-offset:2px}
+.range{display:flex;align-items:center;gap:10px}
+.range input{padding:0;border:0;background:none;accent-color:var(--ink)}
+.range output{min-width:3.2em;text-align:right;font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.providers{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:6px 0 4px}
+.prov{border:1px solid var(--line-2);border-radius:var(--r);padding:12px;text-align:left;background:var(--surface);display:flex;flex-direction:column;gap:3px}
+.prov:hover{border-color:var(--ink-3)}
+.prov.on{border-color:var(--live);box-shadow:0 0 0 3px var(--live-soft)}
+.prov b{font-weight:600;font-size:14px}
+.prov span{font-size:12.5px;color:var(--ink-2)}
+.prov .priv{color:var(--ok);font-weight:500}
+.prov .cloud{color:var(--due);font-weight:500}
+.savebar{position:sticky;bottom:16px;display:flex;justify-content:flex-end;gap:10px;align-items:center;margin-top:10px}
+.savebar .msg{font-size:13px;color:var(--ink-2)}
+.logbox{font-size:12.5px;color:var(--ink-2);line-height:1.6;max-height:300px;overflow:auto;background:var(--sunk);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px}
+.logbox .warn{color:var(--due)} .logbox .error{color:var(--bad)}
+
+.update{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:70;display:flex;gap:16px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--live);border-radius:var(--r);padding:12px 14px;box-shadow:var(--shadow);max-width:min(620px,calc(100vw - 32px));font-size:14px}
+/* ============ palette + toast */
+.overlay{position:fixed;inset:0;background:rgba(10,14,18,.35);display:none;align-items:flex-start;justify-content:center;padding-top:12vh;z-index:50}
+.overlay.open{display:flex}
+.palette{width:min(640px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.palette input{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:16px 18px;font-size:16px;background:var(--surface)}
+.palette input:focus{box-shadow:none}
+.presults{max-height:52vh;overflow:auto;padding:6px}
+.pgroup{font-size:12px;color:var(--ink-3);padding:10px 12px 4px}
+.pitem{display:flex;gap:10px;align-items:baseline;padding:9px 12px;border-radius:var(--r-sm);cursor:pointer;width:100%;text-align:left}
+.pitem.sel{background:var(--hover)}
+.pitem .pt{font-weight:500}
+.pitem .ps{font-size:13px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.pitem .pk{margin-left:auto;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.pitem mark{background:var(--due-soft);color:inherit;border-radius:2px;padding:0}
+.pfoot{border-top:1px solid var(--line);padding:8px 14px;font-size:12px;color:var(--ink-3);display:flex;gap:16px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:var(--r);display:flex;gap:14px;align-items:center;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:60;box-shadow:var(--shadow)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+.toast button{color:var(--bg);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+
+/* ============ responsive */
+@media (max-width:1100px){ .cols{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:860px){
+  .shell{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
+  .rail{order:2;flex-direction:row;padding:6px 8px calc(6px + env(safe-area-inset-bottom));border-right:0;border-top:1px solid var(--line);align-items:center;gap:4px}
+  .brand,.rail .grow,.work,.nav .kbd{display:none}
+  .col{grid-row:1}
+  .top{padding:env(safe-area-inset-top) 12px 0;gap:8px;height:calc(52px + env(safe-area-inset-top))}
+  .today-meta{display:none}
+  .hsearch{order:2;flex:none;width:34px;padding:0;justify-content:center}
+  .hsearch .ph,.hsearch .kbd{display:none}
+  .hright{justify-content:flex-start;min-width:0}
+  .pill .dev-sub{display:none}
+  .pill{padding:0 10px}
+  .tape-hours span:nth-child(even){display:none}
+  .nav{flex-direction:row;flex:1;justify-content:space-around}
+  .nav a{flex-direction:column;gap:2px;font-size:11px;padding:6px 8px}
+  .nav .count{margin:0;position:absolute;transform:translate(12px,-4px)}
+  .nav a{position:relative}
+  .page{padding:20px 16px 100px}
+  .head h1{font-size:28px}
+  .set-layout{grid-template-columns:1fr} .set-nav{display:none}
+  .field{grid-template-columns:1fr} .field .ctl{grid-column:1;grid-row:auto;justify-self:start}
+  .conv{grid-template-columns:48px 12px minmax(0,1fr);gap:0 10px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Main">
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="3" y="2" width="20" height="22" rx="4" fill="var(--ink)"/><path d="M17 2h2a4 4 0 0 1 4 4v2l-6-6z" fill="var(--live)"/><path d="M17 2v6h6" fill="var(--bg)" opacity=".9"/><rect x="7" y="12" width="9" height="2" rx="1" fill="var(--bg)"/><rect x="7" y="16" width="12" height="2" rx="1" fill="var(--bg)" opacity=".6"/></svg>
+      <b>Earmark</b>
+    </div>
+    <div class="nav">
+      <a href="#/today" data-nav="today"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>Today</span></a>
+      <a href="#/tasks" data-nav="tasks"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 12l3 3 5-6"/></svg><span>Tasks</span><span class="count" id="navTasks"></span></a>
+      <a href="#/conversations" data-nav="conversations"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.8 7L3 21l2-5.6A8 8 0 1 1 21 12z"/></svg><span>Conversations</span></a>
+      <a href="#/settings" data-nav="settings" class="settings-link"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Settings</span></a>
+    </div>
+    <div class="grow"></div>
+    <div class="work" id="work" aria-live="polite"></div>
+  </nav>
+  <div class="col">
+    <header class="top">
+      <div class="today-meta" id="todayMeta"><b id="hDate"></b><span id="hRec"></span></div>
+      <button class="hsearch" id="hSearch" aria-label="Search (⌘K)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span class="ph">Search conversations and tasks</span><span class="kbd">⌘K</span>
+      </button>
+      <div class="hright">
+        <a class="phonei" id="phoneI" href="#/settings/phone" hidden aria-label="Phone access"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="3"/><path d="M10.5 18.5h3"/></svg><i></i></a>
+        <div class="pill" id="device" aria-live="polite">
+          <span class="pulse" id="pulse"></span>
+          <span class="dev-state" id="devState">Starting</span>
+          <span class="dev-sub" id="devSub"></span>
+          <span class="batt" id="batt" title="Pendant battery"></span>
+        </div>
+        <button class="btn" id="pauseBtn" aria-pressed="false">Pause</button>
+        <button class="btn" id="connectBtn" title="Look for the pendant and copy what it recorded while away">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.4 6.4L3 16M3 12a9 9 0 0 1 15.4-6.4L21 8M21 3v5h-5M3 21v-5h5"/></svg>Sync now</button>
+      </div>
+    </header>
+    <main class="main" id="main" tabindex="-1"></main>
+  </div>
+  <div class="update" id="update" hidden role="alert">
+    <div><b>Earmark has been updated.</b> Restart it once to switch to the new version. Recording resumes on its own.</div>
+    <button class="btn primary" id="updateBtn">Restart now</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-label="Search">
+  <div class="palette">
+    <input id="pq" placeholder="Search conversations, tasks, or type a command" autocomplete="off" aria-label="Search">
+    <div class="presults" id="presults"></div>
+    <div class="pfoot"><span>↑↓ to move</span><span>Enter to open</span><span>Esc to close</span></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"><span id="toastMsg"></span><button id="toastUndo" hidden>Undo</button></div>
+
+<script>
+/* ======================================================================== utils */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const api = async (p, o = {}) => {
+  const r = await fetch(p, {...o, headers: {'Content-Type': 'application/json', ...(o.headers || {})}});
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch {} throw new Error(m); }
+  return r.json();
+};
+const post = (p, b) => api(p, {method: 'POST', body: JSON.stringify(b || {})});
+const patch = (p, b) => api(p, {method: 'PATCH', body: JSON.stringify(b)});
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const hm = t => new Date(t * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+const clock = x => { x = Math.max(0, Math.floor(x)); const h = Math.floor(x / 3600), m = Math.floor(x % 3600 / 60), s = x % 60; return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; };
+const dur = s => s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min`;
+const isoDay = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayIso = () => isoDay(new Date());
+const parseDay = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const dayLabel = s => {
+  const d = parseDay(s), t = new Date(); t.setHours(0,0,0,0);
+  const diff = Math.round((t - d) / 864e5);
+  const long = d.toLocaleDateString([], {weekday: 'long', day: 'numeric', month: 'long'});
+  return diff === 0 ? ['Today', long] : diff === 1 ? ['Yesterday', long] : [long, d.getFullYear() !== t.getFullYear() ? String(d.getFullYear()) : ''];
+};
+const ago = t => { if (!t) return ''; const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+const KIND = {meeting: 'Meeting', call: 'Call', conversation: 'Conversation', note_to_self: 'Note to self', ambient: 'Background'};
+const LANGS = {de:'German',zh:'Chinese',hi:'Hindi',mr:'Marathi',ar:'Arabic',fr:'French',es:'Spanish',it:'Italian',ru:'Russian',ja:'Japanese',ko:'Korean',ur:'Urdu',pt:'Portuguese',nl:'Dutch',tr:'Turkish',fa:'Persian',en:'English'};
+const ICON = {
+  check: '<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2l2.4 2.3 4.6-5"/></svg>',
+  left: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
+  right: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>',
+  play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>',
+  pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  decision: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
+  refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>',
+};
+let toastTimer;
+function toast(msg, undo) {
+  $('#toastMsg').textContent = msg;
+  const u = $('#toastUndo'); u.hidden = !undo; u.onclick = () => { undo(); hideToast(); };
+  $('#toast').classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, undo ? 6000 : 3000);
+}
+function hideToast() { $('#toast').classList.remove('show'); }
+function dueInfo(due) {
+  if (!due) return null;
+  const d = parseDay(due), t = new Date(); t.setHours(0,0,0,0);
+  const diff = Math.round((d - t) / 864e5);
+  const txt = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday'
+    : diff > 1 && diff < 7 ? d.toLocaleDateString([], {weekday: 'long'}) : d.toLocaleDateString([], {day: 'numeric', month: 'short'});
+  return {txt, cls: diff < 0 ? 'over' : diff <= 1 ? 'soon' : '', diff};
+}
+
+/* ======================================================================== state + status */
+let ST = null, VIEW = null;
+async function refreshStatus() {
+  try { ST = await api('/api/status'); } catch { $('#devState').textContent = 'Earmark is not responding'; $('#pulse').className = 'pulse'; return; }
+  const P = ST.pendant, pulse = $('#pulse');
+  let state, sub = '', cls = '', tip = '';
+  const synced = ST.last_sync_at ? `last synced ${ago(ST.last_sync_at)}` : 'not synced yet';
+  if (P.connected && ST.phase === 'syncing') { state = 'Catching up'; sub = `Copying ${ST.detail}`; cls = 'busy'; tip = 'Copying audio the pendant recorded while it was away'; }
+  else if (P.connected && ST.paused) { state = 'Paused'; sub = 'Double-tap to resume'; cls = 'paused'; tip = 'Connected. Nothing is being recorded. Double-tap the pendant or press Resume.'; }
+  else if (P.connected && ST.phase === 'recording') { state = 'Recording'; sub = ST.open_seconds >= 1 ? clock(ST.open_seconds) : 'Listening'; cls = 'live'; tip = 'Connected and streaming live to this Mac. Nothing is waiting on the pendant.'; }
+  else if (P.connected) { state = 'Connecting'; cls = 'busy'; }
+  else if (P.visible === false) { state = 'Not nearby'; sub = synced[0].toUpperCase() + synced.slice(1); tip = 'The pendant keeps recording to its own memory. Earmark copies it as soon as it is back in range.'; }
+  else if (ST.phase === 'searching') { state = 'Looking for pendant'; sub = synced[0].toUpperCase() + synced.slice(1); cls = 'busy'; }
+  else { state = 'Not connected'; sub = ST.detail || (synced[0].toUpperCase() + synced.slice(1)); }
+  if (ST.last_earmark && Date.now() / 1000 - ST.last_earmark < 8) sub = `Earmarked the moment at ${new Date(ST.last_earmark * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'})}`;
+  if (ST.simulated) sub += (sub ? ' ' : '') + '(simulated pendant)';
+  pulse.className = 'pulse ' + cls;
+  $('#devState').textContent = state;
+  $('#devSub').textContent = sub;
+  $('#device').title = tip || state;
+  const now = new Date();
+  $('#hDate').textContent = now.toLocaleDateString([], {weekday: 'long', day: 'numeric', month: 'long'});
+  const cap = ST.today && ST.today.captured_seconds || 0;
+  $('#hRec').textContent = cap >= 1 ? `${dur(cap)} today` : 'Nothing recorded yet';
+  const b = ST.battery;
+  if (b && b.pct != null) {
+    const stale = Date.now() / 1000 - b.at > 900;
+    $('#batt').className = 'batt num' + (b.pct <= 15 ? ' low' : '');
+    $('#batt').innerHTML = `<svg width="20" height="11" viewBox="0 0 20 11" aria-hidden="true"><rect x=".6" y=".6" width="16.4" height="9.8" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="17.8" y="3.4" width="1.6" height="4.2" rx=".8" fill="currentColor"/><rect x="2.2" y="2.2" width="${(13.2 * b.pct / 100).toFixed(1)}" height="6.6" rx="1.2" fill="currentColor" opacity="${stale ? .45 : .85}"/></svg><span id="battPct">${b.pct}%</span>`;
+    $('#batt').title = `Pendant battery ${b.pct}%${stale ? ', read ' + ago(b.at) : ''}`;
+  }
+  const pb = $('#pauseBtn');
+  pb.textContent = ST.paused ? 'Resume' : 'Pause';
+  pb.className = 'btn' + (ST.paused ? ' live' : '');
+  pb.hidden = !P.connected && !ST.paused;
+  pb.setAttribute('aria-pressed', ST.paused);
+  const cb = $('#connectBtn');
+  cb.hidden = !!P.connected;
+  // background work
+  const w = [];
+  if (ST.proc_phase !== 'idle' && ST.proc_detail) {
+    const verb = ST.proc_phase === 'thinking' ? 'Writing notes' : ST.proc_phase === 'speakers' ? 'Identifying speakers' : ST.proc_phase === 'refreshing' ? 'Improving speaker labels' : 'Transcribing';
+    const d = ST.proc_detail.replace(/^[^:]*:\s*/, m => ST.proc_detail.startsWith('downloading') || ST.proc_detail.startsWith('setting') ? m : '');
+    w.push(`<div>${verb}${ST.proc_pct != null ? ` <span class="num">${ST.proc_pct}%</span>` : ''}<br><span style="color:var(--ink-3)">${esc(ST.proc_detail)}</span></div>`);
+    if (ST.proc_pct != null) w.push(`<div class="bar"><i style="width:${ST.proc_pct}%"></i></div>`);
+  }
+  const queued = ST.counts.queued || 0;
+  if (queued) w.push(`<div style="color:var(--ink-3)">${queued} waiting</div>`);
+  $('#work').innerHTML = w.join('');
+  const ph = ST.phone || {}, pi = $('#phoneI');
+  pi.hidden = !ph.on;
+  pi.classList.toggle('live', !!(ph.active && ph.active.length));
+  pi.title = !ph.on ? '' : (ph.active && ph.active.length ? `Phone access on: ${ph.active.join(', ')} connected now` : `Phone access on${ph.tailscale ? ' (Tailscale)' : ' (Wi-Fi)'}: ${ph.paired} paired, none active right now`);
+  const tc = ST.tasks || {};
+  const nt = $('#navTasks');
+  nt.textContent = tc.open || '';
+  nt.className = 'count' + (tc.overdue ? ' due' : '');
+  nt.title = `${tc.open || 0} of your tasks open` + (tc.overdue ? `, ${tc.overdue} overdue` : '');
+  if (VIEW && VIEW.onStatus) VIEW.onStatus(ST);
+}
+$('#pauseBtn').onclick = async () => { const r = await post('/api/pause', {paused: !(ST && ST.paused)}); toast(r.paused ? 'Paused. Nothing is being recorded.' : 'Recording resumed'); refreshStatus(); };
+$('#connectBtn').onclick = () => { post('/api/sync'); toast('Looking for the pendant'); setTimeout(refreshStatus, 800); };
+
+/* ======================================================================== router */
+const routes = [
+  [/^#\/today(?:\/(\d{4}-\d{2}-\d{2}))?$/, m => viewToday(m[1] || todayIso())],
+  [/^#\/tasks(?:\/(open|others|done))?$/, m => viewTasks(m[1] || 'open')],
+  [/^#\/conversations$/, () => viewConversations()],
+  [/^#\/c\/(\d+)(?:\/(\d+(?:\.\d+)?))?(?:\/(transcript))?$/, m => viewConversation(+m[1], m[2] ? +m[2] : null, m[3])],
+  [/^#\/settings(?:\/(\w+))?$/, m => viewSettings(m[1])],
+];
+async function route() {
+  const h = location.hash || '#/today';
+  if (VIEW && VIEW.leave) VIEW.leave();
+  VIEW = null;
+  for (const [re, fn] of routes) {
+    const m = h.match(re);
+    if (m) {
+      const key = h.split('/')[1];
+      $$('.nav a').forEach(a => a.classList.toggle('on', a.dataset.nav === (key === 'c' ? 'conversations' : key)));
+      try { await fn(m); } catch (e) { $('#main').innerHTML = `<div class="page"><div class="notice"><b>Couldn't load this page.</b> ${esc(e.message)}</div></div>`; }
+      $('#main').focus({preventScroll: true});
+      return;
+    }
+  }
+  location.hash = '#/today';
+}
+window.addEventListener('hashchange', route);
+
+/* ======================================================================== tasks (shared) */
+function taskRow(t, opts = {}) {
+  const di = dueInfo(t.due);
+  const who = t.owner && t.owner !== 'me' && t.owner !== 'unknown' ? `<span class="who">${esc(t.owner)}</span>` : '';
+  const word = di && ['Today', 'Tomorrow', 'Yesterday'].includes(di.txt) ? di.txt.toLowerCase() : di && di.txt;
+  const due = di ? `<span class="due ${di.cls}">${di.diff < 0 ? 'Overdue, was due ' + esc(word) : 'Due ' + esc(word)}</span>` : (t.due_text ? `<span class="due">${esc(t.due_text)}</span>` : '');
+  const src = t.session_id && !opts.noSource ? `<a class="src" href="#/c/${t.session_id}${t.t != null ? '/' + t.t : ''}">${esc(t.session_title || 'Conversation')}${t.t != null ? ' at ' + clock(t.t) : ''}</a>` : (t.origin === 'manual' ? '<span>Added by you</span>' : '');
+  const meta = [who, due, src].filter(Boolean).join('');
+  const looks = t.suggested_done && t.status === 'open' ? `<div class="looks-done"><span>Looks done: <i>“${esc(t.done_evidence || 'mentioned as finished')}”</i></span><button class="btn sm" data-act="confirm">Mark done</button><button class="btn sm ghost" data-act="notyet">Not yet</button></div>` : '';
+  const quote = opts.quotes && t.quote ? `<div class="quote">“${esc(t.quote)}”</div>` : '';
+  return `<div class="task ${t.status === 'done' ? 'done' : ''}" data-id="${t.id}">
+    <button class="check" data-act="toggle" aria-label="${t.status === 'done' ? 'Mark not done' : 'Mark done'}">${ICON.check}</button>
+    <div class="ttext" data-act="edit" title="Click to edit">${esc(t.text)}</div>
+    <div class="tactions"><button class="icon-btn" data-act="dismiss" title="Remove task" aria-label="Remove task" style="width:26px;height:26px">${ICON.x}</button></div>
+    ${meta ? `<div class="tmeta">${meta}</div>` : ''}${quote}${looks}
+  </div>`;
+}
+function bindTasks(root, reload) {
+  root.addEventListener('click', async e => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const row = b.closest('.task'); if (!row) return;
+    const id = +row.dataset.id, act = b.dataset.act;
+    if (act === 'toggle' || act === 'confirm') {
+      const done = !row.classList.contains('done');
+      row.classList.toggle('done', done);
+      await patch(`/api/tasks/${id}`, {status: done ? 'done' : 'open'});
+      toast(done ? 'Task done' : 'Task reopened', async () => { await patch(`/api/tasks/${id}`, {status: done ? 'open' : 'done'}); reload(); refreshStatus(); });
+      setTimeout(reload, done ? 650 : 0); refreshStatus();
+    } else if (act === 'notyet') {
+      await patch(`/api/tasks/${id}`, {suggested_done: false}); reload(); refreshStatus();
+    } else if (act === 'dismiss') {
+      await patch(`/api/tasks/${id}`, {status: 'dismissed'});
+      toast('Task removed', async () => { await patch(`/api/tasks/${id}`, {status: 'open'}); reload(); refreshStatus(); });
+      reload(); refreshStatus();
+    } else if (act === 'edit') {
+      if (b.isContentEditable) return;
+      b.contentEditable = 'true'; b.focus();
+      document.getSelection().selectAllChildren(b); document.getSelection().collapseToEnd();
+      const done = async save => {
+        b.contentEditable = 'false'; b.onblur = b.onkeydown = null;
+        const v = b.textContent.trim();
+        if (save && v) await patch(`/api/tasks/${id}`, {text: v}); else reload();
+      };
+      b.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); done(true); } if (ev.key === 'Escape') done(false); };
+      b.onblur = () => done(true);
+    }
+  });
+}
+
+/* ======================================================================== Today */
+async function viewToday(day) {
+  const D = await api('/api/day?d=' + day);
+  const [title, sub] = dayLabel(day);
+  const main = $('#main');
+  const hasAny = D.sessions.length > 0;
+  main.innerHTML = `<div class="page">
+    <div class="head">
+      <div><h1>${esc(title)}</h1><div class="sub">${esc(sub)}${hasAny ? `${sub ? '. ' : ''}${D.sessions.length} conversation${D.sessions.length > 1 ? 's' : ''}, ${dur(D.captured_s)} recorded` : ''}</div></div>
+      <div class="right daynav">
+        ${D.is_today ? '' : `<a class="btn sm" href="#/today">Today</a>`}
+        <a class="icon-btn" ${D.prev ? `href="#/today/${D.prev}"` : 'disabled'} title="Previous day with recordings ([)" aria-label="Previous day">${ICON.left}</a>
+        <a class="icon-btn" ${D.next ? `href="#/today/${D.next}"` : 'disabled'} title="Next day with recordings (])" aria-label="Next day">${ICON.right}</a>
+      </div>
+    </div>
+    ${tapeHtml(D)}
+    <div class="cols">
+      <div>
+        <section class="brief" aria-label="Day brief">${briefHtml(D)}</section>
+        <div class="section-title">Conversations <span class="n">${D.sessions.length || ''}</span></div>
+        <div class="timeline">${hasAny ? D.sessions.map(convHtml).join('') : `<div class="empty-line">Nothing recorded ${D.is_today ? 'yet today. Conversations appear here a minute or two after they end.' : 'on this day.'}</div>`}</div>
+      </div>
+      <aside class="side">
+        <div class="card" id="todayTasks">
+          <div class="section-title">To do <span class="n">${D.tasks.length || ''}</span><a class="r" href="#/tasks" style="font-size:12.5px;color:var(--ink-3)">All tasks</a></div>
+          <div class="tlist">${D.tasks.length ? D.tasks.slice(0, 8).map(t => taskRow(t)).join('') : `<div class="empty-line">${D.is_today ? 'No tasks from today yet.' : 'No open tasks from this day.'}</div>`}</div>
+        </div>
+        ${D.brief && D.brief.decisions && D.brief.decisions.length ? `<div class="card"><div class="section-title">Decisions</div>${D.brief.decisions.map(x => `<div class="decision" style="background:none;border:0;padding:4px 0">${ICON.decision}<span>${esc(x)}</span></div>`).join('')}</div>` : ''}
+      </aside>
+    </div></div>`;
+  bindTape(D);
+  bindTasks($('#todayTasks'), () => viewToday(day));
+  const rb = $('#briefRefresh'); if (rb) rb.onclick = async () => { await post(`/api/day/${day}/refresh`); toast('Writing a fresh brief'); };
+  let sig = JSON.stringify([D.sessions.map(s => [s.id, s.status, s.intel_status, s.title]), D.brief_status, D.tasks.length]);
+  VIEW = {
+    onStatus: async st => {
+      if (st.proc_phase === 'idle' && !st.counts.queued && VIEW.idleOnce) return;
+      VIEW.idleOnce = st.proc_phase === 'idle' && !st.counts.queued;
+      const n = await api('/api/day?d=' + day);
+      const ns = JSON.stringify([n.sessions.map(s => [s.id, s.status, s.intel_status, s.title]), n.brief_status, n.tasks.length]);
+      if (ns !== sig) { sig = ns; viewToday(day); }
+    },
+    keys: e => { if (e.key === '[' && D.prev) location.hash = '#/today/' + D.prev; if (e.key === ']' && D.next) location.hash = '#/today/' + D.next; },
+  };
+}
+function briefHtml(D) {
+  const b = D.brief;
+  if (b && b.headline) {
+    return `<div class="headline">${esc(b.headline)}</div>
+      ${b.summary ? `<p>${esc(b.summary)}</p>` : ''}
+      ${b.highlights && b.highlights.length ? `<ul class="highlights">${b.highlights.map(h => `<li><span>${h.session ? `<a href="#/c/${h.session}">${esc(h.text)}</a>` : esc(h.text)}</span></li>`).join('')}</ul>` : ''}
+      <div class="meta">${b.people && b.people.length ? `<span>With ${esc(b.people.join(', '))}</span>` : ''}<button class="btn sm ghost" id="briefRefresh" style="padding:0;color:var(--ink-3)">${ICON.refresh} Refresh brief</button></div>`;
+  }
+  if (!D.sessions.length) return `<div class="brief-empty"><b>${D.is_today ? 'Your day will be summarised here.' : 'No brief for this day.'}</b><br>${D.is_today ? 'As conversations are transcribed, Earmark writes a short brief of what happened and what you agreed to.' : ''}</div>`;
+  const working = D.sessions.some(s => s.status !== 'done' || s.intel_status === 'pending' || s.intel_status === 'working');
+  if (ST && ST.intel && ST.intel.provider === 'off') return `<div class="brief-empty"><b>Day briefs are off.</b> Turn on notes in <a href="#/settings/intelligence" style="text-decoration:underline">Settings</a> to get a summary of each day and an automatic task list.</div>`;
+  return `<div class="brief-empty"><b>${working ? 'Writing the brief for this day.' : 'The brief will appear shortly.'}</b><br>${working ? 'It is written once every conversation of the day has notes.' : ''}</div>`;
+}
+function convHtml(s) {
+  const ready = s.status === 'done' && s.intel_status === 'done';
+  const kind = s.status !== 'done' ? 'pending' : (s.kind || 'conversation');
+  const chips = [];
+  if (s.status === 'queued') chips.push('<span class="chip work">Waiting to transcribe</span>');
+  else if (s.status === 'transcribing') chips.push('<span class="chip work">Transcribing</span>');
+  else if (s.status === 'error') chips.push('<span class="chip err">Transcription failed</span>');
+  else if (s.intel_status === 'pending' || s.intel_status === 'working') chips.push('<span class="chip work">Writing notes</span>');
+  else if (s.intel_status === 'error') chips.push('<span class="chip err">Notes failed</span>');
+  if (s.kind && ready) chips.push(`<span class="chip">${KIND[s.kind] || s.kind}</span>`);
+  chips.push(`<span class="chip num">${dur(s.duration_s)}</span>`);
+  if (s.task_count) chips.push(`<span class="chip task">${s.task_count} task${s.task_count > 1 ? 's' : ''}</span>`);
+  if (s.earmark_count) chips.push(`<span class="chip mark">${s.earmark_count} earmark${s.earmark_count > 1 ? 's' : ''}</span>`);
+  if (s.people && s.people.length) chips.push(`<span class="chip">${esc(s.people.slice(0, 3).join(', '))}${s.people.length > 3 ? ' +' + (s.people.length - 3) : ''}</span>`);
+  const title = s.title || (s.status === 'done' ? 'Untitled conversation' : 'New recording');
+  return `<a class="conv" href="#/c/${s.id}">
+    <div class="time">${hm(s.started_at)}</div><div class="spine"><span class="knot ${kind}"></span></div>
+    <div class="body"><div class="t">${esc(title)}</div>${s.gist ? `<div class="g">${esc(s.gist)}</div>` : ''}<div class="chips">${chips.join('')}</div></div></a>`;
+}
+function tapeHtml(D) {
+  // show the part of the day that has activity, at least 08:00-20:00
+  const t0 = D.day_start;
+  let lo = 8, hi = 20;
+  for (const [a, b] of D.spans) { lo = Math.min(lo, Math.floor((a - t0) / 3600)); hi = Math.max(hi, Math.ceil((b - t0) / 3600)); }
+  if (D.is_today) hi = Math.max(hi, Math.ceil((Date.now() / 1000 - t0) / 3600));
+  lo = Math.max(0, lo); hi = Math.min(24, Math.max(hi, lo + 4));
+  const span = (hi - lo) * 3600, pos = t => ((t - t0 - lo * 3600) / span * 100);
+  const hours = []; const step = hi - lo > 12 ? 3 : 2;
+  const grid = [];
+  for (let h = Math.ceil(lo / step) * step; h <= hi; h += step) { const x = (h - lo) / (hi - lo) * 100; hours.push(`<span style="left:${x}%">${pad(h)}:00</span>`); if (x > 0 && x < 100) grid.push(`<span class="tape-grid" style="left:${x}%"></span>`); }
+  const sessions = Object.fromEntries(D.sessions.map(s => [s.id, s]));
+  const blocks = D.spans.map(([a, b, id, kind]) => {
+    const s = sessions[id] || {};
+    const k = s.status !== 'done' ? 'pending' : (kind || 'conversation');
+    return `<a class="tape-block ${k}" href="#/c/${id}" style="left:${pos(a)}%;width:${Math.max(.35, pos(b) - pos(a))}%" data-tip="${esc(hm(a) + '  ' + (s.title || 'New recording'))}" aria-label="${esc(hm(a) + ' ' + (s.title || 'recording'))}"></a>`;
+  }).join('');
+  const now = D.is_today ? `<span class="tape-now" style="left:${pos(Date.now() / 1000)}%" title="Now"></span>` : '';
+  const marks = (D.earmarks || []).map(([at]) => `<span class="tape-mark" style="left:${pos(at)}%" title="Earmarked at ${hm(at)}"></span>`).join('');
+  return `<div class="tape" id="tape" role="group" aria-label="When conversations happened"><div class="tape-track"></div>${grid.join('')}${blocks}${marks}${now}<div class="tape-hours">${hours.join('')}</div><div class="tape-tip" id="tapeTip"></div></div>`;
+}
+function bindTape() {
+  const tip = $('#tapeTip'), tape = $('#tape'); if (!tape) return;
+  tape.addEventListener('mouseover', e => { const b = e.target.closest('.tape-block'); if (!b) return; tip.textContent = b.dataset.tip; tip.style.left = (b.offsetLeft + b.offsetWidth / 2) + 'px'; tip.style.opacity = 1; });
+  tape.addEventListener('mouseout', e => { if (e.target.closest('.tape-block')) tip.style.opacity = 0; });
+}
+
+/* ======================================================================== Tasks */
+async function viewTasks(filter) {
+  const all = await api('/api/tasks?view=' + (filter === 'done' ? 'done' : 'open'));
+  const mine = all.filter(t => !t.owner || t.owner === 'me' || t.owner === 'unknown');
+  const others = all.filter(t => t.owner && t.owner !== 'me' && t.owner !== 'unknown');
+  const list = filter === 'others' ? others : filter === 'done' ? all : mine;
+  const groups = [];
+  if (filter === 'done') groups.push(['Done', list, '']);
+  else {
+    const looks = list.filter(t => t.suggested_done);
+    const rest = list.filter(t => !t.suggested_done);
+    const by = f => rest.filter(t => f(dueInfo(t.due)));
+    if (looks.length) groups.push(['Looks done: confirm?', looks, '']);
+    groups.push(['Overdue', by(d => d && d.diff < 0), 'over']);
+    groups.push(['Today', by(d => d && d.diff === 0), '']);
+    groups.push(['This week', by(d => d && d.diff > 0 && d.diff < 7), '']);
+    groups.push(['Later', by(d => d && d.diff >= 7), '']);
+    groups.push(['No date', by(d => !d), '']);
+  }
+  $('#main').innerHTML = `<div class="page narrow">
+    <div class="head"><div><h1>Tasks</h1><div class="sub">${filter === 'done' ? 'Finished tasks, newest first.' : 'Picked up from your conversations automatically. Each one links to the moment it was said.'}</div></div>
+      <div class="right"><div class="seg" role="tablist">
+        <button role="tab" class="${filter === 'open' ? 'on' : ''}" data-f="open">Mine <span class="num" style="color:var(--ink-3)">${filter === 'done' ? '' : mine.length}</span></button>
+        <button role="tab" class="${filter === 'others' ? 'on' : ''}" data-f="others">Waiting on others <span class="num" style="color:var(--ink-3)">${filter === 'done' ? '' : others.length}</span></button>
+        <button role="tab" class="${filter === 'done' ? 'on' : ''}" data-f="done">Done</button>
+      </div></div></div>
+    ${filter === 'done' ? '' : `<form class="addtask" id="addTask"><input id="newTask" placeholder="Add a task, then press Enter" aria-label="New task"><input id="newDue" type="date" style="width:160px" aria-label="Due date"></form>`}
+    <div id="tgroups">${groups.filter(g => g[1].length).map(([h, ts, c]) => `<div class="group ${c}"><h3>${h} <span class="n">${ts.length}</span></h3>${ts.map(t => taskRow(t, {quotes: true})).join('')}</div>`).join('')
+      || `<div class="notice">${filter === 'done' ? 'Nothing finished yet.' : filter === 'others' ? '<b>Nothing waiting on others.</b> When someone in a conversation agrees to do something, it shows up here.' : '<b>You are all caught up.</b> Tasks appear here when you or someone else commits to something in a conversation. You can also add one above.'}</div>`}</div></div>`;
+  $$('.seg button').forEach(b => b.onclick = () => location.hash = '#/tasks/' + b.dataset.f);
+  const form = $('#addTask');
+  if (form) form.onsubmit = async e => {
+    e.preventDefault(); const v = $('#newTask').value.trim(); if (!v) return;
+    await post('/api/tasks', {text: v, due: $('#newDue').value || null, owner: filter === 'others' ? 'someone' : 'me'});
+    toast('Task added'); viewTasks(filter); refreshStatus();
+  };
+  bindTasks($('#tgroups'), () => viewTasks(filter));
+  VIEW = {};
+}
+
+/* ======================================================================== Conversations */
+async function viewConversations() {
+  let kind = '', q = '';
+  $('#main').innerHTML = `<div class="page narrow">
+    <div class="head"><div><h1>Conversations</h1><div class="sub">Everything Earmark has recorded, newest first.</div></div></div>
+    <div class="filters"><input id="cq" placeholder="Filter by words in the title, notes or transcript" aria-label="Filter conversations">
+      <div class="seg" id="kinds"><button class="on" data-k="">All</button><button data-k="meeting">Meetings</button><button data-k="call">Calls</button><button data-k="conversation">Conversations</button><button data-k="note_to_self">Notes</button></div></div>
+    <div id="clist"></div></div>`;
+  const draw = async () => {
+    const rows = await api(`/api/sessions?kind=${kind}&q=${encodeURIComponent(q)}`);
+    const byDay = {};
+    for (const r of rows) (byDay[isoDay(new Date(r.started_at * 1000))] ||= []).push(r);
+    $('#clist').innerHTML = rows.length ? Object.entries(byDay).map(([d, rs]) => `<div class="daygroup"><h3>${esc(dayLabel(d).filter(Boolean).join(', '))}</h3>
+      ${rs.map(s => `<a class="row" href="#/c/${s.id}"><span class="time">${hm(s.started_at)}</span>
+        <span><span class="t"><span class="kdot ${s.status !== 'done' ? 'pending' : s.kind || 'conversation'}"></span>${esc(s.title || 'New recording')}</span>${s.speakers && s.speakers.length ? `<span class="g" style="display:block;color:var(--ink-3)">with ${esc(s.speakers.join(', '))}</span>` : ''}${s.gist ? `<span class="g" style="display:block">${esc(s.gist)}</span>` : ''}</span>
+        <span class="d">${dur(s.duration_s)}${s.task_count ? `<br><span style="color:var(--due)">${s.task_count} task${s.task_count > 1 ? 's' : ''}</span>` : ''}</span></a>`).join('')}</div>`).join('')
+      : `<div class="notice">${q || kind ? 'No conversations match.' : '<b>No conversations yet.</b> Wear the pendant near this Mac; recordings show up here a minute or two after each conversation.'}</div>`;
+  };
+  let tmr; $('#cq').oninput = e => { q = e.target.value.trim(); clearTimeout(tmr); tmr = setTimeout(draw, 200); };
+  $$('#kinds button').forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#kinds button').forEach(x => x.classList.toggle('on', x === b)); draw(); });
+  await draw();
+  VIEW = {onStatus: st => { if (st.proc_phase !== 'idle') draw(); }};
+}
+
+/* ======================================================================== Conversation */
+function spkModel(s) {
+  const list = (s.speakers || []).map((x, k) => {
+    const n = +String(x.label).replace(/\D/g, '') || k + 1, fallback = `Speaker ${n}`;
+    const named = x.name && x.state !== 'none';
+    return {...x, fallback, color: `var(--s${((n - 1) % 8) + 1})`,
+      display: named && x.state !== 'suggested' ? (x.is_me ? 'Me' : x.name) : fallback};
+  });
+  return {list, byLabel: Object.fromEntries(list.map(x => [x.label, x]))};
+}
+
+async function viewConversation(id, at, tab) {
+  const s = await api('/api/sessions/' + id);
+  const n = s.notes;
+  const showTranscript = tab === 'transcript' || at != null || !n;
+  const title = s.title || (s.status === 'done' ? 'Untitled conversation' : 'New recording');
+  const day = isoDay(new Date(s.started_at * 1000));
+  const meta = [`<span>${new Date(s.started_at * 1000).toLocaleString([], {weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}</span>`,
+    `<span class="chip num">${dur(s.duration_s)}</span>`,
+    s.kind ? `<span class="chip"><span class="kdot ${s.kind}"></span>${KIND[s.kind] || s.kind}</span>` : '',
+    (() => { const named = (s.speakers || []).filter(x => x.name && (x.state === 'confirmed' || x.state === 'auto') && !x.is_me).map(x => x.name);
+      return named.length ? `<span class="chip">with ${esc(named.join(', '))}</span>` : n && n.people && n.people.length ? `<span class="chip">${esc(n.people.join(', '))}</span>` : ''; })(),
+    s.language && s.language !== 'en' ? `<span class="chip">${esc(s.language.split(', ').map(l => LANGS[l] || l).join(', '))}</span>` : ''].filter(Boolean).join('');
+  const inMark = t => (s.earmarks || []).some(m => t >= m - 20 && t <= m + 30);
+  const momentHtml = (s.earmarks || []).map(m => {
+    const segs = s.segments.filter(g => g.start >= m - 20 && g.start <= m + 30);
+    if (!segs.length) return '';
+    return `<button class="moment" data-t="${segs[0].start}"><span class="ts num">${clock(m)}</span><span class="tx">${esc(segs.map(g => g.text).join(' '))}</span></button>`;
+  }).join('');
+  let notesHtml;
+  if (s.status !== 'done') {
+    notesHtml = `<div class="notice" id="pending"><b>${s.status === 'error' ? 'Transcription failed.' : s.status === 'queued' ? 'Waiting to be transcribed.' : 'Transcribing now.'}</b> ${s.status === 'error' ? esc(s.error || '') : 'Notes and tasks will appear here when it is done.'}<div class="bar" style="margin-top:12px;${s.status === 'transcribing' ? '' : 'display:none'}"><i id="pbar" style="width:0"></i></div>${s.status === 'error' ? '<div style="margin-top:12px"><button class="btn sm" id="retry">Try again</button></div>' : ''}</div>`;
+  } else if (!n) {
+    notesHtml = `<div class="notice"><b>${s.intel_status === 'error' ? 'Notes could not be written.' : s.intel_status === 'pending' || s.intel_status === 'working' ? 'Writing notes now.' : 'No notes for this conversation.'}</b> ${s.intel_status === 'error' ? esc(s.intel_error || '') : 'The transcript is ready below.'}${s.intel_status === 'error' ? '<div style="margin-top:12px"><button class="btn sm" id="renotes2">Try again</button></div>' : ''}</div>`;
+  } else {
+    const tasks = s.tasks.filter(t => t.session_id === id && t.status !== 'dismissed');
+    const closed = s.tasks.filter(t => t.done_session === id && t.session_id !== id);
+    notesHtml = `<div class="notes">
+      ${n.summary ? `<p class="sum">${esc(n.summary)}</p>` : ''}
+      ${momentHtml ? `<h4>Earmarked moments</h4><div class="moments" id="moments">${momentHtml}</div>` : ''}
+      ${tasks.length ? `<h4>Tasks</h4><div class="card" id="ctasks" style="padding:6px 10px">${tasks.map(t => taskRow({...t, session_title: title}, {noSource: true, quotes: true})).join('')}</div>` : ''}
+      ${closed.length ? `<h4>Earlier tasks this conversation suggests are finished</h4><div class="card" id="ctasks2" style="padding:6px 10px">${closed.map(t => taskRow(t, {quotes: false})).join('')}</div>` : ''}
+      ${n.decisions && n.decisions.length ? `<h4>Decisions</h4>${n.decisions.map(x => `<div class="decision">${ICON.decision}<span>${esc(x)}</span></div>`).join('')}` : ''}
+      ${n.key_points && n.key_points.length ? `<h4>Key points</h4><ul>${n.key_points.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${n.topics && n.topics.length ? `<div class="chips" style="margin-top:20px">${n.topics.map(x => `<span class="chip">${esc(x)}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }
+  const SP = spkModel(s);
+  let splitAt = null;
+  const trLines = () => s.segments.length ? s.segments.map((g, i) => {
+      const sp = SP.byLabel[g.spk], prev = s.segments[i - 1];
+      const head = sp && (!prev || prev.spk !== g.spk) ? `<div class="spk-head" style="--c:${sp.color}"><button class="spk-chip" data-l="${esc(sp.label)}" data-i="${i}" title="Who is this? Click to name or correct">${'<span class="sdot"></span>'}${esc(sp.display)}${sp.state === 'suggested' ? ' <em>?</em>' : ''}</button></div>` : '';
+      const words = splitAt === i ? (g.words ? g.words.map(w => w[2]) : g.text.split(/\s+/)) : null;
+      const body = words ? words.map((w, k) => `<span class="w${k ? '' : ' first'}" data-w="${k}">${esc(w)}</span>`).join(' ') : esc(g.text);
+      const canSplit = SP.list.length && g.text.trim().includes(' ');
+      return head + `<div class="tline${inMark(g.start) ? ' marked' + (!inMark(prev?.start ?? -999) ? ' mark-start' : '') : ''}${words ? ' splitting' : ''}" data-i="${i}" data-t="${g.start}"><span class="ts">${clock(g.start)}</span><span class="tx">${body}${g.from ? `<span class="tag">translated from ${esc(LANGS[g.from] || g.from)}</span>` : ''}</span>${canSplit ? `<button class="splitbtn" type="button" data-split="${i}" title="Two people in this line? Split it">${words ? 'Cancel' : 'Split'}</button>` : ''}</div>`
+        + (words ? `<div class="split-hint">Click the first word the other person says.</div>` : '');
+    }).join('')
+    : `<div class="notice">${s.status === 'done' ? 'No speech was found in this recording.' : 'The transcript will appear here.'}</div>`;
+  const trHtml = `<div id="spkPanel"></div><div id="trLines">${trLines()}</div>
+    <div class="assign" id="assign" hidden><span class="what" id="asWhat"></span>
+      <input id="asName" list="peopleList" placeholder="Who is speaking?" autocomplete="off" aria-label="Speaker name">
+      <button class="btn primary sm" id="asAll" type="button"></button><button class="btn sm" id="asLines" type="button">Only these lines</button><button class="btn sm ghost" id="asX" type="button">Cancel</button></div>
+    <datalist id="peopleList"></datalist>`;
+  $('#main').innerHTML = `<div class="page narrow">
+    <div class="crumbs"><a href="#/today/${day}">${esc(dayLabel(day)[0])}</a><span>/</span><span>${hm(s.started_at)}</span>
+      <span style="margin-left:auto;display:flex;gap:6px">
+        ${s.status === 'done' ? `<button class="btn sm ghost" id="renotes" title="Write the notes and tasks again">Rewrite notes</button><button class="btn sm ghost" id="redo" title="Transcribe the audio again">Transcribe again</button>` : ''}
+        <button class="btn sm ghost danger" id="del">Delete</button></span></div>
+    <h1 class="ctitle" id="ctitle" contenteditable="true" spellcheck="false" aria-label="Title (click to rename)">${esc(title)}</h1>
+    <div class="cmeta">${meta}</div>
+    <div class="tabs" role="tablist"><button role="tab" data-tab="notes" class="${showTranscript ? '' : 'on'}">Notes</button><button role="tab" data-tab="transcript" class="${showTranscript ? 'on' : ''}">Transcript</button></div>
+    <div id="pNotes" ${showTranscript ? 'hidden' : ''}>${notesHtml}</div>
+    <div id="pTranscript" ${showTranscript ? '' : 'hidden'}>${trHtml}</div>
+    <div class="player" id="player">
+      <button class="play" id="playBtn" aria-label="Play">${ICON.play}</button>
+      <div class="scrub"><span id="cur" class="num">0:00</span><input type="range" id="seek" min="0" max="${Math.max(1, s.duration_s).toFixed(1)}" step="0.1" value="0" aria-label="Position"><span class="num">${clock(s.duration_s)}</span></div>
+      <button class="rate" id="rate" title="Playback speed">1×</button>
+      <audio id="audio" preload="metadata" src="/api/sessions/${id}/audio"></audio>
+    </div></div>`;
+  // tabs
+  $$('.tabs button').forEach(b => b.onclick = () => {
+    const tr = b.dataset.tab === 'transcript';
+    $$('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+    $('#pNotes').hidden = tr; $('#pTranscript').hidden = !tr;
+    history.replaceState(null, '', `#/c/${id}${tr ? '/transcript' : ''}`);
+  });
+  // rename
+  const ct = $('#ctitle');
+  ct.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); ct.blur(); } if (e.key === 'Escape') { ct.textContent = title; ct.blur(); } };
+  ct.onblur = async () => { const v = ct.textContent.trim(); if (v && v !== title) { await patch('/api/sessions/' + id, {title: v}); toast('Renamed'); } };
+  // actions
+  $('#del').onclick = async () => {
+    if (!confirm('Delete this conversation, its audio, transcript and the tasks that came from it? This cannot be undone.')) return;
+    await api('/api/sessions/' + id, {method: 'DELETE'}); toast('Conversation deleted'); location.hash = '#/today/' + day;
+  };
+  const rn = async () => { await post(`/api/sessions/${id}/renotes`); toast('Rewriting the notes'); viewConversation(id); };
+  if ($('#renotes')) $('#renotes').onclick = rn;
+  if ($('#renotes2')) $('#renotes2').onclick = rn;
+  if ($('#redo')) $('#redo').onclick = async () => { await post(`/api/sessions/${id}/retry`); toast('Transcribing again'); viewConversation(id); };
+  if ($('#retry')) $('#retry').onclick = async () => { await post(`/api/sessions/${id}/retry`); viewConversation(id); };
+  ['#ctasks', '#ctasks2'].forEach(sel => { if ($(sel)) bindTasks($(sel), () => viewConversation(id)); });
+  // player + synced transcript
+  const a = $('#audio'), seek = $('#seek');
+  let lines = $$('.tline');
+  let curLine = -1, rates = [1, 1.25, 1.5, 2], ri = 0;
+  const setIcon = () => { $('#playBtn').innerHTML = a.paused ? ICON.play : ICON.pause; $('#playBtn').setAttribute('aria-label', a.paused ? 'Play' : 'Pause'); };
+  $('#playBtn').onclick = () => a.paused ? a.play() : a.pause();
+  a.onplay = a.onpause = setIcon;
+  a.onloadedmetadata = () => { if (isFinite(a.duration)) seek.max = a.duration; if (at != null) { a.currentTime = at; } };
+  seek.oninput = () => { a.currentTime = +seek.value; };
+  $('#rate').onclick = () => { ri = (ri + 1) % rates.length; a.playbackRate = rates[ri]; $('#rate').textContent = rates[ri] + '×'; };
+  a.ontimeupdate = () => {
+    seek.value = a.currentTime; $('#cur').textContent = clock(a.currentTime);
+    let k = -1; for (let i = 0; i < s.segments.length; i++) { if (s.segments[i].start <= a.currentTime + .2) k = i; else break; }
+    if (k !== curLine) { lines.forEach(l => l.classList.remove('now')); if (k >= 0 && lines[k]) { lines[k].classList.add('now'); if (!a.paused && !$('#pTranscript').hidden) lines[k].scrollIntoView({block: 'nearest', behavior: 'smooth'}); } curLine = k; }
+  };
+  // ---- speakers: naming, correcting, selecting lines
+  let sel = null, namesChanged = false, people = [];
+  const loadPeople = async () => { try { people = await api('/api/people'); } catch { people = []; }
+    const opts = new Set(['Me', ...people.map(p => p.name), ...Object.values(SP.byLabel).filter(x => x.name).map(x => x.display)]);
+    $('#peopleList').innerHTML = [...opts].map(n => `<option value="${esc(n)}">`).join(''); };
+  const redraw = () => {
+    Object.assign(SP, spkModel(s));
+    $('#trLines').innerHTML = trLines(); lines = $$('.tline'); curLine = -1;
+    drawSpkPanel(); markSel();
+  };
+  const apply = async (url, body) => {
+    try { const r = await post(url, body); s.speakers = r.speakers; r.labels.forEach((l, i) => { if (s.segments[i]) s.segments[i].spk = l; });
+      namesChanged = s.intel_status === 'done'; clearSel(); redraw(); loadPeople(); return true; }
+    catch (err) { toast('Could not save: ' + err.message); return false; }
+  };
+  const drawSpkPanel = () => {
+    const el = $('#spkPanel'); if (!el) return;
+    const st = s.spk_status;
+    if (!s.segments.length) { el.innerHTML = ''; return; }
+    if (st === 'pending' || st === 'working') { el.innerHTML = `<div class="spk-panel"><div class="ph"><b>Speakers</b><span>Telling the voices apart. This takes a moment after transcription.</span></div><div class="bar"><i id="spkbar" style="width:0"></i></div></div>`; return; }
+    if (st === 'off' || !st) { el.innerHTML = `<div class="spk-panel"><div class="ph"><b>Speakers</b><span>Speakers were not identified for this conversation.</span><button class="btn sm" id="spkRun" type="button">Identify speakers</button></div></div>`; $('#spkRun').onclick = rerun; return; }
+    if (st === 'error') { el.innerHTML = `<div class="spk-panel"><div class="ph"><b>Speakers</b><span>Could not identify speakers: ${esc(s.spk_error || '')}</span><button class="btn sm" id="spkRun" type="button">Try again</button></div></div>`; $('#spkRun').onclick = rerun; return; }
+    const total = SP.list.reduce((t, x) => t + x.seconds, 0) || 1;
+    const row = x => {
+      let ask = '';
+      if (x.state === 'suggested') ask = `<span class="spk-ask">${x.guess_me ? 'Loudest voice: <b>is this you?</b>' : `Sounds like <b>${esc(x.name)}</b>`} <button class="btn sm" data-yes="${esc(x.label)}" type="button">Yes</button><button class="btn sm ghost" data-no="${esc(x.label)}" type="button">No</button></span>`;
+      else if (x.state === 'auto') ask = `<span class="spk-tag" title="Recognised from a voice you named before">Recognised</span>`;
+      return `<div class="spk-row" style="--c:${x.color}" data-l="${esc(x.label)}"><span class="sdot"></span>
+        <input class="spk-name" value="${x.state === 'confirmed' || x.state === 'auto' ? esc(x.name || '') : ''}" placeholder="${esc(x.fallback)}: add a name" list="peopleList" aria-label="Name for ${esc(x.fallback)}" data-l="${esc(x.label)}">
+        <span class="spk-meta"><span class="tbar"><i style="width:${Math.max(3, 100 * x.seconds / total).toFixed(0)}%"></i></span><span class="num">${dur(x.seconds)}</span>${ask}</span>
+        <span class="spk-acts"><button class="btn sm ghost" data-play="${esc(x.label)}" type="button" title="Play a sample of this voice">${ICON.play}<span class="sr">Play sample</span></button><button class="btn sm ghost" data-lines="${esc(x.label)}" type="button" title="Select every line from this voice">Lines</button></span></div>`;
+    };
+    el.innerHTML = `<div class="spk-panel"><div class="ph"><b>Speakers</b><span>Name a voice once and Earmark recognises it in later conversations.</span><button class="btn sm ghost" id="spkRun" type="button" title="Work out who spoke again. Names you confirmed are kept.">Identify again</button></div>
+      ${SP.list.map(row).join('')}
+      ${namesChanged ? `<div class="spk-note" id="namesNote">Names updated. The notes and tasks were written before.<button class="btn sm primary" id="spkNotes" type="button">Update notes with names</button></div>` : ''}</div>`;
+    $('#spkRun').onclick = rerun;
+    if ($('#spkNotes')) $('#spkNotes').onclick = async () => { await post(`/api/sessions/${id}/renotes`); toast('Rewriting the notes with speaker names'); namesChanged = false; s.intel_status = 'pending'; drawSpkPanel(); };
+    $$('#spkPanel .spk-name').forEach(inp => {
+      const commit = async () => { const v = inp.value.trim(), x = SP.byLabel[inp.dataset.l]; const cur = x.state === 'confirmed' || x.state === 'auto' ? (x.name || '') : '';
+        if (v === cur) return; await apply(`/api/sessions/${id}/speakers/${inp.dataset.l}`, {name: v}); toast(v ? `Saved ${v}'s voice` : 'Name removed'); };
+      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } if (e.key === 'Escape') { inp.value = inp.defaultValue; inp.blur(); } };
+      inp.onchange = commit; inp.onblur = commit;
+    });
+  };
+  const rerun = async () => { await post(`/api/sessions/${id}/speakers`); s.spk_status = 'pending'; s.speakers = []; s.segments.forEach(g => delete g.spk); redraw(); toast('Identifying speakers'); };
+  $('#spkPanel') && drawSpkPanel();
+  loadPeople();
+  // selection
+  const markSel = () => { lines.forEach((l, i) => l.classList.toggle('sel', !!sel && i >= sel.first && i <= sel.last)); };
+  const clearSel = () => { sel = null; $('#assign').hidden = true; markSel(); };
+  const openSel = (first, last) => {
+    sel = {first: Math.min(first, last), last: Math.max(first, last)}; markSel();
+    const labs = new Set(s.segments.slice(sel.first, sel.last + 1).map(g => g.spk));
+    const one = labs.size === 1 ? SP.byLabel[[...labs][0]] : null, n = sel.last - sel.first + 1;
+    $('#asWhat').innerHTML = `<b>${n} line${n > 1 ? 's' : ''}</b> <span class="num">${clock(s.segments[sel.first].start)}–${clock(s.segments[sel.last].end || s.segments[sel.last].start)}</span>`;
+    $('#asWhat').title = 'Shift-click a line to extend or shrink the selection';
+    $('#asAll').hidden = !one; if (one) $('#asAll').textContent = `Name ${one.display} everywhere`;
+    $('#asName').value = one && one.name && one.state !== 'suggested' ? one.name : '';
+    $('#assign').hidden = false; $('#asName').focus();
+  };
+  const blockOf = i => { const l = s.segments[i].spk; let a1 = i, b1 = i; while (a1 > 0 && s.segments[a1 - 1].spk === l) a1--; while (b1 < s.segments.length - 1 && s.segments[b1 + 1].spk === l) b1++; return [a1, b1]; };
+  const nameToTarget = v => { const hit = SP.list.find(x => x.display.toLowerCase() === v.toLowerCase() || x.fallback.toLowerCase() === v.toLowerCase()); return hit && !hit.name ? {label: hit.label} : {name: v}; };
+  $('#asX').onclick = clearSel;
+  $('#asLines').onclick = async () => { const v = $('#asName').value.trim(); if (!v || !sel) return $('#asName').focus();
+    if (await apply(`/api/sessions/${id}/lines`, {first: sel.first, last: sel.last, ...nameToTarget(v)})) toast('Lines reassigned'); };
+  $('#asAll').onclick = async () => { const v = $('#asName').value.trim(); if (!v || !sel) return $('#asName').focus();
+    const l = s.segments[sel.first].spk; if (await apply(`/api/sessions/${id}/speakers/${l}`, {name: v})) toast(`Saved ${v}'s voice`); };
+  $('#asName').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); ($('#asAll').hidden ? $('#asLines') : $('#asAll')).click(); } if (e.key === 'Escape') clearSel(); };
+  let sampleStop = null;
+  $('#pTranscript').onclick = async e => {
+    const sb = e.target.closest('[data-split]');
+    if (sb) { const i = +sb.dataset.split; splitAt = splitAt === i ? null : i; redraw(); return; }
+    const wd = e.target.closest('.tline.splitting .w');
+    if (wd) {
+      const i = +wd.closest('.tline').dataset.i, k = +wd.dataset.w;
+      if (k === 0) return toast('Pick a word after the first one');
+      try { const r = await post(`/api/sessions/${id}/split`, {index: i, word: k});
+        s.segments = r.segments; s.speakers = r.speakers; splitAt = null; redraw(); openSel(i + 1, i + 1); toast('Line split. Who said the second part?'); }
+      catch (err) { toast('Could not split: ' + err.message); }
+      return;
+    }
+    if (e.target.closest('.tline.splitting')) return;
+    const chip = e.target.closest('.spk-chip');
+    if (chip) { const [f1, l1] = blockOf(+chip.dataset.i); return openSel(f1, l1); }
+    const yes = e.target.closest('[data-yes]'), no = e.target.closest('[data-no]'), play = e.target.closest('[data-play]'), all = e.target.closest('[data-lines]');
+    if (yes) { const x = SP.byLabel[yes.dataset.yes]; if (await apply(`/api/sessions/${id}/speakers/${x.label}`, x.guess_me ? {name: 'me'} : {})) toast('Confirmed'); return; }
+    if (no) { await apply(`/api/sessions/${id}/speakers/${no.dataset.no}`, {name: ''}); return; }
+    if (play) { const x = SP.byLabel[play.dataset.play]; if (!x.sample) return; clearTimeout(sampleStop); a.currentTime = x.sample[0]; a.play(); sampleStop = setTimeout(() => a.pause(), Math.min(8, x.sample[1] - x.sample[0]) * 1000); return; }
+    if (all) { const idx = s.segments.map((g, i) => g.spk === all.dataset.lines ? i : -1).filter(i => i >= 0); if (idx.length) { const [f1, l1] = blockOf(idx[0]); openSel(f1, l1); lines[idx[0]].scrollIntoView({block: 'center'}); } return; }
+    const l = e.target.closest('.tline'); if (!l) return;
+    if (e.shiftKey || e.metaKey) { e.preventDefault(); const i = +l.dataset.i; return openSel(sel ? sel.first : i, i); }
+    a.currentTime = +l.dataset.t; a.play();
+  };
+  if ($('#moments')) $('#moments').onclick = e => { const m = e.target.closest('.moment'); if (!m) return; a.currentTime = +m.dataset.t; a.play(); };
+  if (at != null) {
+    const l = lines.find(x => +x.dataset.t >= at - .5) || lines[lines.length - 1];
+    if (l) { l.classList.add('now'); setTimeout(() => l.scrollIntoView({block: 'center'}), 50); }
+  }
+  VIEW = {
+    leave: () => { a.pause(); clearTimeout(sampleStop); },
+    keys: e => {
+      if (e.key === ' ' && !e.target.closest('[contenteditable="true"],input')) { e.preventDefault(); a.paused ? a.play() : a.pause(); }
+      if (e.target.closest('input')) return;
+      if (e.key === 'Escape') { if (sel) return clearSel(); location.hash = '#/today/' + day; }
+    },
+    onStatus: async st => {
+      if (st.proc_sid === id && st.proc_pct != null && $('#pbar')) $('#pbar').style.width = st.proc_pct + '%';
+      if (st.proc_sid === id && st.proc_phase === 'speakers' && st.proc_pct != null && $('#spkbar')) $('#spkbar').style.width = st.proc_pct + '%';
+      if (s.status !== 'done' || s.intel_status !== 'done' || s.spk_status === 'pending' || s.spk_status === 'working') {
+        const fresh = await api('/api/sessions/' + id);
+        if (fresh.status !== s.status || fresh.intel_status !== s.intel_status) viewConversation(id, null, $('#pTranscript').hidden ? null : 'transcript');
+        else if (fresh.spk_status !== s.spk_status) { s.spk_status = fresh.spk_status; s.spk_error = fresh.spk_error; s.speakers = fresh.speakers; s.segments = fresh.segments; redraw(); }
+      }
+    },
+  };
+}
+
+/* ======================================================================== Settings */
+const PROVIDERS = [
+  ['local', 'On this Mac', 'Private. Nothing leaves your Mac.', 'priv'],
+  ['ollama', 'Ollama', 'A model you run with Ollama.', 'priv'],
+  ['openai', 'OpenAI', 'Transcripts are sent to OpenAI.', 'cloud'],
+  ['anthropic', 'Anthropic', 'Transcripts are sent to Anthropic.', 'cloud'],
+  ['off', 'Off', 'Transcripts only. No notes or tasks.', ''],
+];
+async function viewSettings(section) {
+  const S = await api('/api/settings'), c = S.config;
+  const sw = (id, on) => `<label class="switch ctl"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}><span></span></label>`;
+  const f = (lab, hint, ctl) => `<div class="field"><div class="lab">${lab}</div>${ctl}<div class="hint">${hint}</div></div>`;
+  $('#main').innerHTML = `<div class="page">
+    <div class="head"><div><h1>Settings</h1></div></div>
+    <div class="set-layout">
+      <nav class="set-nav"><a href="#/settings/pendant">Pendant</a><a href="#/settings/intelligence">Notes and tasks</a><a href="#/settings/transcription">Transcription</a><a href="#/settings/voices">Voices</a><a href="#/settings/phone">Phone</a><a href="#/settings/advanced">Advanced</a><a href="#/settings/activity">Activity</a></nav>
+      <form id="setForm">
+        <section class="set-sec" id="s-pendant"><h2>Pendant</h2><p>How the pendant behaves while it is connected to this Mac.</p>
+          ${f('Connect automatically', 'Earmark connects whenever the pendant is near this Mac.', sw('auto_sync', c.auto_sync))}
+          ${f('Double-tap to pause', 'Double-tap the pendant to stop recording; the light turns off. Double-tap again to resume.', sw('double_tap_pause', c.double_tap_pause))}
+          ${f('Single tap to earmark', 'Tap once to mark a moment as important. Say “remind me to…” after the tap and it becomes a task.', sw('single_tap_earmark', c.single_tap_earmark))}
+          ${f('Vibrate to confirm', 'One medium buzz when a moment is earmarked, one long buzz when paused, three short when recording again. Useful with the light off.', sw('haptics', c.haptics))}
+          ${f('Light brightness', '0% turns the light off. While paused it is always off.', `<div class="range ctl"><input type="range" id="led_brightness" min="0" max="100" step="5" value="${c.led_brightness}"><output id="ledOut" class="num">${c.led_brightness}%</output></div>`)}
+          ${f('Microphone level', ST && ST.pendant.mic_gain != null ? `The pendant is currently at level ${ST.pendant.mic_gain}.` : 'Read from the pendant when it connects.', `<select id="mic_gain" class="ctl">${[['-1', 'Leave as is'], ['0', '0 (muted)'], ...[1,2,3,4,5,6,7].map(x => [String(x), String(x)]), ['8', '8 (loudest)']].map(([v, l]) => `<option value="${v}" ${+v === c.mic_gain ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+          ${f('Skip recordings with no speech', 'Coughs, a glass on the table or room noise are deleted instead of transcribed.', sw('skip_noise', c.min_speech_seconds > 0))}
+        </section>
+        <section class="set-sec" id="s-intelligence"><h2>Notes and tasks</h2><p>After each conversation is transcribed, a language model writes the notes, picks up tasks, keeps your task list current and writes a brief of each day.</p>
+          <div class="providers" id="provs">${PROVIDERS.map(([v, t, d, k]) => `<button type="button" class="prov ${c.intel_provider === v ? 'on' : ''}" data-p="${v}"><b>${t}</b><span class="${k}">${d}</span></button>`).join('')}</div>
+          <div id="provFields"></div>
+          <div class="hint" id="intelState" style="margin-top:10px;font-size:12.5px;color:var(--ink-3)"></div>
+        </section>
+        <section class="set-sec" id="s-transcription"><h2>Transcription</h2><p>Speech is turned into text on this Mac. Audio never leaves it.</p>
+          ${f('Speech engine', 'Automatic uses Parakeet for English and Whisper for other languages.', `<select id="engine" class="ctl"><option value="auto">Automatic (recommended)</option><option value="parakeet-v2">Parakeet, English only</option><option value="parakeet-v3">Parakeet, 25 European languages</option><option value="whisper">Whisper only</option></select>`)}
+          <div id="trAuto">${f('Translate to English', 'Speech in other languages is written in English, marked with the original language.', sw('translate', c.translate))}</div>
+          <div id="trWhisper">${f('Whisper model', 'Larger is more accurate and slower.', `<select id="whisper_model" class="ctl">${['base', 'small', 'medium', 'large-v3-turbo'].map(m => `<option ${m === c.whisper_model ? 'selected' : ''}>${m}</option>`).join('')}</select>`)}
+          ${f('Language', 'Leave blank to detect it automatically.', `<input id="language" class="ctl" value="${esc(c.language)}" placeholder="e.g. en">`)}</div>
+        </section>
+        <section class="set-sec" id="s-voices"><h2>Voices</h2><p>Earmark tells voices apart in every conversation. Name someone once in a transcript and they are recognised from then on. Voice signatures stay on this Mac.</p>
+          ${f('Identify speakers', 'Label who said each line. Turning it off keeps the names you have already given.', sw('identify_speakers', c.identify_speakers !== false))}
+          <div id="voices"></div>
+        </section>
+        <section class="set-sec" id="s-phone"><h2>Phone</h2><p>Use Earmark on your iPhone: today, tasks, notes, transcripts and audio. It stays private. Nothing goes through a cloud service, and only phones you pair here can open it.</p>
+          <div id="phoneBox"><div class="hint">Checking…</div></div>
+        </section>
+        <section class="set-sec" id="s-advanced"><h2>Advanced</h2><p>Defaults suit most people.</p>
+          ${f('Connection', 'Stay connected: everything goes straight to this Mac and pause works. Check in: the pendant records to its memory and Earmark copies it every few minutes, which saves pendant battery.', `<select id="conn_mode" class="ctl"><option value="stay" ${c.stay_connected ? 'selected' : ''}>Stay connected (recommended)</option><option value="checkin" ${c.stay_connected ? '' : 'selected'}>Check in every 5 minutes</option></select>`)}
+          ${f('New conversation after a pause of', 'A meeting stays one conversation, up to 4 hours, as long as nobody is silent this long.', `<select id="session_gap_seconds" class="ctl">${[[60, '1 minute'], [90, '1.5 minutes'], [180, '3 minutes'], [300, '5 minutes'], [600, '10 minutes']].map(([v, l]) => `<option value="${v}" ${v === c.session_gap_seconds ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
+          ${f('Appearance', 'Follows your Mac unless you choose.', `<select id="theme" class="ctl"><option value="">Match system</option><option value="light">Light</option><option value="dark">Dark</option></select>`)}
+          ${f('Restart Earmark', 'Reloads the service. Recording resumes on its own.', `<button type="button" class="btn ctl" id="restart" style="width:auto">Restart</button>`)}
+          ${f('Where your data lives', `Notes: ${esc(S.paths.notes)}<br>Audio: ${esc(S.paths.audio)}`, '<span></span>')}
+        </section>
+        <section class="set-sec" id="s-activity"><h2>Activity</h2><p>What Earmark has been doing.</p><div class="logbox" id="logbox"></div></section>
+        <div class="savebar"><span class="msg" id="saveMsg"></span><button class="btn primary" type="submit">Save changes</button></div>
+      </form>
+    </div></div>`;
+  let provider = c.intel_provider;
+  const provFields = () => {
+    const pf = $('#provFields');
+    if (provider === 'local') pf.innerHTML = f('Model', 'Downloads once. Larger is smarter but slower.', `<select id="local_model" class="ctl">${Object.entries(S.local_models).map(([k, v]) => `<option value="${k}" ${k === c.local_model ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`);
+    else if (provider === 'ollama') pf.innerHTML = f('Ollama model', S.ollama_models.length ? 'Models installed in Ollama.' : 'Ollama is not running or has no models. Install one, e.g. ollama pull qwen3.5:9b', `<select id="ollama_model" class="ctl">${S.ollama_models.map(m => `<option ${m === c.ollama_model ? 'selected' : ''}>${esc(m)}</option>`).join('') || '<option value="">None found</option>'}</select>`)
+      + f('Ollama address', '', `<input id="ollama_host" class="ctl" value="${esc(c.ollama_host)}">`);
+    else if (provider === 'openai') pf.innerHTML = f('OpenAI API key', 'Stored on this Mac only.', `<input id="openai_key" class="ctl" type="password" autocomplete="off" placeholder="${c.openai_key ? esc(c.openai_key) : 'sk-…'}">`)
+      + f('Model', '', `<input id="openai_model" class="ctl" value="${esc(c.openai_model)}">`);
+    else if (provider === 'anthropic') pf.innerHTML = f('Anthropic API key', 'Stored on this Mac only.', `<input id="anthropic_key" class="ctl" type="password" autocomplete="off" placeholder="${c.anthropic_key ? esc(c.anthropic_key) : 'sk-ant-…'}">`)
+      + f('Model', '', `<input id="anthropic_model" class="ctl" value="${esc(c.anthropic_model)}">`);
+    else pf.innerHTML = '';
+    $('#intelState').textContent = provider === c.intel_provider ? `Status: ${S.intel.detail}` : '';
+  };
+  $$('#provs .prov').forEach(b => b.onclick = () => { provider = b.dataset.p; $$('#provs .prov').forEach(x => x.classList.toggle('on', x === b)); provFields(); });
+  provFields();
+  $('#engine').value = c.engine;
+  const trVis = () => { const e = $('#engine').value; $('#trAuto').hidden = e !== 'auto'; $('#trWhisper').hidden = e !== 'whisper'; };
+  $('#engine').onchange = trVis; trVis();
+  $('#led_brightness').oninput = e => $('#ledOut').textContent = e.target.value + '%';
+  $('#theme').value = localGet('theme') || '';
+  $('#theme').onchange = e => { localSet('theme', e.target.value); applyTheme(); };
+  $('#restart').onclick = async () => { await post('/api/restart'); toast('Restarting Earmark'); setTimeout(() => location.reload(), 4000); };
+  $('#setForm').onsubmit = async e => {
+    e.preventDefault();
+    const v = id => $('#' + id) ? $('#' + id).value : undefined, ch = id => $('#' + id).checked;
+    const body = {auto_sync: ch('auto_sync'), double_tap_pause: ch('double_tap_pause'), single_tap_earmark: ch('single_tap_earmark'), haptics: ch('haptics'), led_brightness: v('led_brightness'), mic_gain: v('mic_gain'),
+      min_speech_seconds: ch('skip_noise') ? 3 : 0, intel_provider: provider, engine: v('engine'), translate: ch('translate'),
+      whisper_model: v('whisper_model'), language: v('language'), stay_connected: v('conn_mode') === 'stay',
+      poll_seconds: v('conn_mode') === 'stay' ? 20 : 300, session_gap_seconds: v('session_gap_seconds'), identify_speakers: ch('identify_speakers')};
+    for (const k of ['local_model', 'ollama_model', 'ollama_host', 'openai_key', 'openai_model', 'anthropic_key', 'anthropic_model']) { const x = v(k); if (x !== undefined) body[k] = x; }
+    try { await api('/api/settings', {method: 'PUT', body: JSON.stringify(body)}); $('#saveMsg').textContent = 'Saved'; toast('Settings saved'); }
+    catch (err) { $('#saveMsg').textContent = 'Not saved: ' + err.message; }
+    setTimeout(() => $('#saveMsg').textContent = '', 4000);
+  };
+  const drawVoices = async () => {
+    const ps = await api('/api/people').catch(() => []);
+    $('#voices').innerHTML = ps.length ? `<div class="vlist">${ps.map(p => `<div class="vrow" data-id="${p.id}">
+        <input class="vname" value="${esc(p.name)}" aria-label="Name" data-old="${esc(p.name)}">
+        <span class="vmeta">${p.is_me ? 'You. ' : ''}${p.trained ? `${dur(p.seconds)} of voice` : 'No voice saved yet'}${p.conversations ? `, in ${p.conversations} conversation${p.conversations > 1 ? 's' : ''}` : ''}</span>
+        <button type="button" class="btn sm ghost danger" data-forget="${p.id}">Forget</button></div>`).join('')}</div>`
+      : `<div class="hint" style="padding:10px 0">No voices saved yet. Open a conversation, go to Transcript and name a speaker.</div>`;
+    $$('#voices .vname').forEach(inp => {
+      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } };
+      inp.onblur = async () => { const v = inp.value.trim(); if (!v || v === inp.dataset.old) { inp.value = inp.dataset.old; return; }
+        const r = await patch('/api/people/' + inp.closest('.vrow').dataset.id, {name: v}); toast(r.merged_into ? `Merged into ${v}` : 'Renamed'); drawVoices(); };
+    });
+    $$('#voices [data-forget]').forEach(b => b.onclick = async () => {
+      if (!confirm('Forget this voice? Their lines go back to "Speaker N" and they will not be recognised again until named.')) return;
+      await api('/api/people/' + b.dataset.forget, {method: 'DELETE'}); toast('Voice forgotten'); drawVoices(); });
+  };
+  drawVoices();
+  drawPhone();
+  const drawLog = st => { $('#logbox').innerHTML = (st && st.log || []).map(l => `<div class="${l.level}"><span class="num" style="color:var(--ink-3)">${hm(l.t)}</span>  ${esc(l.msg)}</div>`).join('') || 'Nothing yet.'; };
+  drawLog(ST);
+  if (section) { const el = $('#s-' + section); if (el) el.scrollIntoView(); }
+  VIEW = {onStatus: drawLog};
+}
+
+/* ======================================================================== phone access */
+let phoneTimer = null;
+async function drawPhone(justPaired) {
+  const box = $('#phoneBox'); if (!box) return;
+  clearTimeout(phoneTimer);
+  let P;
+  try { P = await api('/api/phone'); }
+  catch (e) { box.innerHTML = `<div class="notice">Pairing and phone access are managed from Earmark on your Mac.</div>`; return; }
+  const T = P.tailscale, ts = [];
+  if (!T.installed) ts.push(`<div class="pstep"><b>Install Tailscale on this Mac and on your iPhone.</b> It's free and makes a private, encrypted link between your own devices, so Earmark is reachable from your phone anywhere and from nobody else. Sign in with the same account on both. <a class="lnk" href="https://tailscale.com/download" target="_blank" rel="noopener">tailscale.com/download</a></div>`);
+  else if (!T.running) ts.push(`<div class="pstep"><b>Open Tailscale on this Mac and sign in.</b> Use the same account as on your iPhone. ${T.detail ? `<span class="hint">(${esc(T.detail)})</span>` : ''}</div>`);
+  else if (!T.serving) ts.push(`<div class="pstep"><b>Tailscale is ready.</b> Publish Earmark to your own devices (never to the internet):<div style="margin-top:8px"><button class="btn primary sm" id="tsOn" type="button">Turn on phone access</button></div><div id="tsMsg" class="hint" style="margin-top:6px"></div></div>`);
+  else ts.push(`<div class="pstep ok"><b>Phone access is on.</b> <span class="num">${esc(T.url)}</span> <button class="btn sm ghost" id="tsOff" type="button">Turn off</button></div>`);
+  const base = T.serving && T.url ? T.url : (P.lan_access && P.lan_live && P.lan_url ? P.lan_url : null);
+  const code = P.code;
+  box.innerHTML = `
+    <div class="pcard"><h3>Private link</h3>${ts.join('')}
+      <div class="field" style="border-top:1px solid var(--line);margin-top:12px"><div class="lab">Also on this Wi-Fi</div>
+        <label class="switch ctl"><input type="checkbox" id="lanSw" ${P.lan_access ? 'checked' : ''}><span></span></label>
+        <div class="hint">Works without Tailscale at home: ${P.lan_url ? `<span class="num">${esc(P.lan_url)}</span>` : 'no Wi-Fi address found'}. Less private: traffic on the Wi-Fi is not encrypted, so leave it off on shared networks.${P.lan_access !== P.lan_live ? ' <b>Restart Earmark to apply.</b>' : ''}</div></div>
+    </div>
+    <div class="pcard"><h3>Pair a phone</h3>
+      ${code ? `<div class="pair">
+          <div class="qr" id="qr">${base ? '' : '<div class="hint">Turn on a link above to get a QR code.</div>'}</div>
+          <div><div class="hint">On the iPhone, ${base ? 'scan this with the Camera, or open' : 'open'} ${base ? `<span class="num">${esc(base)}</span>` : 'the link'} in Safari. Then tap Share, Add to Home Screen, open Earmark from the home screen and enter:</div>
+            <div class="bigcode num">${code.code.slice(0, 3)} ${code.code.slice(3)}</div>
+            <div class="hint" id="codeLeft"></div></div></div>`
+        : `<div class="hint" style="margin-bottom:10px">A one-time code connects a phone. It works once, for 10 minutes.</div><button class="btn primary sm" id="pairBtn" type="button" ${base ? '' : 'disabled'}>Pair a phone</button>${base ? '' : '<div class="hint" style="margin-top:6px">Turn on a private link first.</div>'}`}
+      ${justPaired ? `<div class="spk-note" style="margin-top:12px">Paired. Earmark is now on that phone.</div>` : ''}
+    </div>
+    <div class="pcard"><h3>Paired devices</h3>
+      ${P.devices.length ? P.devices.map(d => `<div class="vrow"><span><b>${esc(d.name)}</b></span><span class="vmeta">Paired ${new Date(d.created_at * 1000).toLocaleDateString([], {day: 'numeric', month: 'short'})}${d.last_seen ? `, last used ${ago(d.last_seen)}` : ''}</span><button class="btn sm ghost danger" type="button" data-unpair="${d.id}">Remove</button></div>`).join('')
+        : '<div class="hint">None yet.</div>'}
+    </div>`;
+  if ($('#tsOn')) $('#tsOn').onclick = async () => { $('#tsOn').disabled = true; $('#tsMsg').textContent = 'Setting up…';
+    const r = await post('/api/phone/tailscale', {on: true}).catch(e => ({ok: false, output: e.message}));
+    if (r.enable_link) $('#tsMsg').innerHTML = `Tailscale needs HTTPS turned on for your network, once. <a class="lnk" href="${esc(r.enable_link)}" target="_blank" rel="noopener">Turn it on</a>, then press the button again.`;
+    else if (!r.ok) $('#tsMsg').textContent = 'Did not work: ' + (r.output || 'unknown error');
+    else { toast('Phone access is on'); drawPhone(); } $('#tsOn') && ($('#tsOn').disabled = false); };
+  if ($('#tsOff')) $('#tsOff').onclick = async () => { await post('/api/phone/tailscale', {on: false}); toast('Phone access through Tailscale is off'); drawPhone(); };
+  $('#lanSw').onchange = async e => { const r = await post('/api/phone/lan', {on: e.target.checked}); toast(r.restart_needed ? 'Saved. Restart Earmark to apply.' : 'Saved'); drawPhone(); };
+  if ($('#pairBtn')) $('#pairBtn').onclick = async () => { await post('/api/phone/code'); drawPhone(); };
+  $$('#phoneBox [data-unpair]').forEach(b => b.onclick = async () => { if (!confirm('Remove this device? It will need a new code to open Earmark again.')) return;
+    await api('/api/phone/devices/' + b.dataset.unpair, {method: 'DELETE'}); toast('Device removed'); drawPhone(); });
+  if (code) {
+    if (base) loadQR().then(() => { try { const q = qrcode(0, 'M'); q.addData(`${base}/pair?code=${code.code}`); q.make(); $('#qr').innerHTML = q.createSvgTag({cellSize: 4, margin: 2, scalable: true}); } catch {} });
+    const n0 = P.devices.length;
+    const tick = async () => {
+      const left = Math.max(0, code.exp - Date.now() / 1000);
+      if ($('#codeLeft')) $('#codeLeft').textContent = left > 0 ? `Code expires in ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}` : 'Code expired';
+      if (!$('#phoneBox')) return;
+      if (Math.round(left) % 3 === 0) { const Q = await api('/api/phone').catch(() => null); if (Q && Q.devices.length > n0) return drawPhone(true); if (Q && !Q.code) return drawPhone(); }
+      phoneTimer = setTimeout(tick, 1000);
+    };
+    tick();
+  }
+}
+let qrLoading = null;
+function loadQR() {
+  if (window.qrcode) return Promise.resolve();
+  return qrLoading ||= new Promise((ok, bad) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'; sc.onload = ok; sc.onerror = bad; document.head.appendChild(sc); });
+}
+
+/* ======================================================================== command palette */
+let PAL = {items: [], sel: 0};
+const COMMANDS = () => [
+  {g: 'Go to', t: 'Today', k: 'T', run: () => location.hash = '#/today'},
+  {g: 'Go to', t: 'Tasks', k: 'G then K', run: () => location.hash = '#/tasks'},
+  {g: 'Go to', t: 'Conversations', run: () => location.hash = '#/conversations'},
+  {g: 'Go to', t: 'Settings', run: () => location.hash = '#/settings'},
+  {g: 'Actions', t: ST && ST.paused ? 'Resume recording' : 'Pause recording', run: () => $('#pauseBtn').click()},
+  {g: 'Actions', t: 'Add a task', run: () => { location.hash = '#/tasks'; setTimeout(() => $('#newTask') && $('#newTask').focus(), 150); }},
+  {g: 'Actions', t: 'Look for the pendant now', run: () => $('#connectBtn').click()},
+];
+function openPalette() { $('#overlay').classList.add('open'); $('#pq').value = ''; $('#pq').focus(); palSearch(''); }
+function closePalette() { $('#overlay').classList.remove('open'); }
+const hl = (text, q) => { const i = text.toLowerCase().indexOf(q.toLowerCase()); if (i < 0 || !q) return esc(text); return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length)); };
+let palTimer, palSeq = 0;
+function palRender(q, items) {
+  PAL = {items, sel: 0, q};
+  let g = '';
+  $('#presults').innerHTML = items.length ? items.map((it, i) => { const head = it.g !== g ? `<div class="pgroup">${it.g}</div>` : ''; g = it.g; return head + `<button class="pitem ${i === 0 ? 'sel' : ''}" data-i="${i}">${it.html}</button>`; }).join('')
+    : `<div class="pgroup" style="padding:18px">${q.length < 2 ? 'Type to search' : 'Nothing found for “' + esc(q) + '”'}</div>`;
+}
+function palCommands(q) {
+  return COMMANDS().filter(c => !q || c.t.toLowerCase().includes(q.toLowerCase()))
+    .map(c => ({...c, html: `<span class="pt">${hl(c.t, q)}</span>${c.k ? `<span class="pk">${c.k}</span>` : ''}`}));
+}
+// Commands filter instantly on every keystroke; only the server search waits for a pause in typing,
+// so Enter always acts on what is on screen for the current text.
+function palSearch(q) {
+  const seq = ++palSeq, cmds = palCommands(q);
+  palRender(q, cmds);
+  clearTimeout(palTimer);
+  if (q.length < 2) return;
+  palTimer = setTimeout(async () => {
+    const r = await api('/api/search?q=' + encodeURIComponent(q));
+    if (seq !== palSeq) return;
+    let items = cmds.concat(r.sessions.flatMap(s => {
+      const base = {g: 'Conversations', run: () => location.hash = '#/c/' + s.id, html: `<span class="pt">${hl(s.title || 'Recording', q)}</span><span class="ps">${esc(s.gist || '')}</span><span class="pk">${hm(s.started_at)}, ${new Date(s.started_at * 1000).toLocaleDateString([], {day: 'numeric', month: 'short'})}</span>`};
+      return [base, ...s.hits.slice(0, 2).map(h => ({g: 'Conversations', run: () => location.hash = `#/c/${s.id}/${h.t}`, html: `<span class="ps" style="padding-left:14px">“${hl(h.text, q)}”</span><span class="pk num">${clock(h.t)}</span>`}))];
+    }));
+    items = items.concat(r.tasks.map(t => ({g: 'Tasks', run: () => location.hash = t.session_id ? `#/c/${t.session_id}${t.t != null ? '/' + t.t : ''}` : '#/tasks', html: `<span class="pt" style="${t.status === 'done' ? 'text-decoration:line-through;color:var(--ink-3)' : ''}">${hl(t.text, q)}</span>${t.owner && t.owner !== 'me' && t.owner !== 'unknown' ? `<span class="pk">${esc(t.owner)}</span>` : ''}`})));
+    const keepSel = PAL.sel;
+    palRender(q, items);
+    PAL.sel = Math.min(keepSel, items.length - 1);
+    $$('.pitem').forEach((x, i) => x.classList.toggle('sel', i === PAL.sel));
+  }, 140);
+}
+$('#pq').oninput = e => palSearch(e.target.value.trim());
+$('#pq').onkeydown = e => {
+  const n = PAL.items.length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); PAL.sel = (PAL.sel + (e.key === 'ArrowDown' ? 1 : -1) + n) % n; $$('.pitem').forEach((x, i) => x.classList.toggle('sel', i === PAL.sel)); $$('.pitem')[PAL.sel]?.scrollIntoView({block: 'nearest'}); }
+  if (e.key === 'Enter' && n) { e.preventDefault(); const it = PAL.items[PAL.sel]; closePalette(); it.run(); }
+  if (e.key === 'Escape') closePalette();
+};
+$('#presults').onclick = e => { const b = e.target.closest('.pitem'); if (!b) return; const it = PAL.items[+b.dataset.i]; closePalette(); it.run(); };
+$('#overlay').onclick = e => { if (e.target.id === 'overlay') closePalette(); };
+$('#hSearch').onclick = e => { e.preventDefault(); openPalette(); };
+
+/* ======================================================================== keyboard + theme */
+let gPending = false;
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#overlay').classList.contains('open') ? closePalette() : openPalette(); return; }
+  if ($('#overlay').classList.contains('open')) return;
+  const typing = e.target.closest('input,select,textarea,[contenteditable="true"]');
+  if (typing) return;
+  if (e.key === '/') { e.preventDefault(); openPalette(); return; }
+  if (gPending) { gPending = false; const m = {t: '#/today', k: '#/tasks', c: '#/conversations', s: '#/settings'}[e.key]; if (m) location.hash = m; return; }
+  if (e.key === 'g') { gPending = true; setTimeout(() => gPending = false, 900); return; }
+  if (VIEW && VIEW.keys) VIEW.keys(e);
+});
+function localGet(k) { try { return localStorage.getItem('earmark.' + k); } catch { return null; } }
+function localSet(k, v) { try { v ? localStorage.setItem('earmark.' + k, v) : localStorage.removeItem('earmark.' + k); } catch {} }
+function applyTheme() { const t = localGet('theme'); if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
+applyTheme();
+
+/* ======================================================================== boot */
+// A page newer than the running service (files updated, service not yet restarted) offers a restart
+// instead of half-working screens.
+function needsRestart() { return ST && !('tasks' in ST); }
+$('#updateBtn').onclick = async () => {
+  $('#updateBtn').disabled = true; $('#updateBtn').textContent = 'Restarting';
+  try { await post('/api/restart'); } catch {}
+  const t0 = Date.now();
+  const poll = async () => { try { const s = await api('/api/status'); if ('tasks' in s) return location.reload(); } catch {} if (Date.now() - t0 < 60000) { setTimeout(poll, 1500); } else { $('#updateBtn').textContent = 'Restart did not finish: try again'; $('#updateBtn').disabled = false; } };
+  setTimeout(poll, 2500);
+};
+refreshStatus().then(() => { if (needsRestart()) { $('#update').hidden = false; $('#main').innerHTML = '<div class="page"><div class="notice"><b>One step left.</b> Restart Earmark (button above) to finish updating. Nothing is lost; recordings made in the meantime are kept.</div></div>'; return; } route(); });
+setInterval(refreshStatus, 2500);
+</script>
+</body>
+</html>

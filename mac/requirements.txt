@@ -1,0 +1,9 @@
+bleak>=0.22
+opuslib>=3.0.1
+fastapi>=0.115
+uvicorn>=0.30
+faster-whisper>=1.1
+mlx-whisper>=0.4; platform_machine == "arm64" and sys_platform == "darwin"
+parakeet-mlx>=0.6; platform_machine == "arm64" and sys_platform == "darwin"
+mlx-lm>=0.30; platform_machine == "arm64" and sys_platform == "darwin"
+sherpa-onnx>=1.10

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+# Runtime data never belongs in the repo (lives in ~/Earmark)
+*.sqlite
+*.wav
+*.pcm
+*.raw
+*.opus
+service.log
+tools_check.txt
+config.json
+models/
+# macOS
+.DS_Store
+# Flutter / mobile
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/release/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Runner/GeneratedPluginRegistrant.*
+*.keystore
+*.jks
+key.properties
