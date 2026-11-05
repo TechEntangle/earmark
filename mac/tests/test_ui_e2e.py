@@ -644,3 +644,16 @@ def test_phone_forwards_the_pendants_own_memory(server):
     assert _app_call(server, "/api/app/ring", tok, raw=raw, headers={"X-Earmark-Ring-Start": "0", "X-Earmark-Ring-Next": str(len(raw) // 444)})[1].get("duplicate")
     wait_for(lambda: len([x for x in call(server, "/api/sessions") if x.get("source") == "pendant"]) > n0, 30, "conversation from the pendant's memory")
     assert _app_call(server, "/api/app/ring", tok, raw=raw[:100], headers={"X-Earmark-Ring-Start": "5", "X-Earmark-Ring-Next": "6"})[0] == 400
+
+
+def test_mac_stays_out_while_the_phone_is_connecting(server):
+    code = call(server, "/api/phone/code", "POST", {})["code"]
+    tok = _app_call(server, "/api/app/pair", body={"code": code, "name": "Slow phone"})[1]["token"]
+    _app_call(server, "/api/app/heartbeat", tok, body={"wants_pendant": True, "pendant_connected": False, "state": "connecting"})
+    wait_for(lambda: not call(server, "/api/status")["pendant"]["connected"] or
+             (call(server, "/api/status")["pendant"].get("via") or "").startswith("Slow phone"), 20, "Mac lets go")
+    call(server, "/api/sync", "POST", {})                 # even when asked to look, the Mac must not reconnect
+    time.sleep(4)
+    st = call(server, "/api/status")
+    assert (st["pendant"].get("via") or "").startswith("Slow phone")
+    _app_call(server, "/api/app/heartbeat", tok, body={"wants_pendant": False, "holds_pendant": False})

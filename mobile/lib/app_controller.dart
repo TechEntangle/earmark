@@ -39,6 +39,25 @@ class EarmarkController extends ChangeNotifier {
   Map<String, dynamic> macSettings = {};
   Map<String, dynamic>? macStatus;
   bool ready = false;
+  bool macHasPendant = false;
+  DateTime? _lastHeld; // when this phone last had the pendant connected
+  DateTime? _takeoverAsked; // the user asked to take the pendant from the Mac
+
+  /// Ask the Mac to step back. Only when this phone had the pendant moments ago, or the user
+  /// asked: a phone without the pendant nearby (or an emulator) must not stop the Mac recording.
+  bool get _wantsPendant {
+    if (!holding || pendant.connected) return false;
+    final now = DateTime.now();
+    if (_lastHeld != null && now.difference(_lastHeld!) < const Duration(minutes: 2)) return true;
+    return _takeoverAsked != null && now.difference(_takeoverAsked!) < const Duration(minutes: 5);
+  }
+
+  /// "Take it from the Mac": the Mac lets go and this phone connects.
+  Future<void> takeFromMac() async {
+    _takeoverAsked = DateTime.now();
+    notifyListeners();
+    await heartbeat();
+  }
 
   late final TapInterpreter _taps = TapInterpreter(
     onSingle: _earmark,
@@ -134,6 +153,7 @@ class EarmarkController extends ChangeNotifier {
   }
 
   void _onPendant() {
+    if (pendant.connected) _lastHeld = DateTime.now();
     if (!pendant.connected) store?.close();
     notifyListeners();
     if (pendant.connected) {
@@ -223,7 +243,7 @@ class EarmarkController extends ChangeNotifier {
     try {
       final r = await a.heartbeat({
         'holds_pendant': holding && pendant.connected,
-        'wants_pendant': holding && !pendant.connected,
+        'wants_pendant': _wantsPendant,
         'pendant_connected': pendant.connected,
         'battery': pendant.battery,
         'state': paused ? 'paused' : switch (pendant.state) {
@@ -239,6 +259,8 @@ class EarmarkController extends ChangeNotifier {
       link = Link.online;
       linkError = null;
       macSettings = Map<String, dynamic>.from(r['settings'] as Map? ?? {});
+      macHasPendant = r['mac_has_pendant'] == true;
+      if (pendant.connected) _lastHeld = DateTime.now();
       final last = r['last_seq'];
       if (last is int) store?.ensureSeqAbove(last);
       // the Mac's Pause button wins when nothing from the phone is waiting to be sent

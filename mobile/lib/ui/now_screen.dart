@@ -94,6 +94,15 @@ class _NowScreenState extends State<NowScreen> {
                   ),
                 ),
               ]),
+              if (!p.connected && c.holding && c.macHasPendant) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  key: const Key('takeBtn'),
+                  onPressed: c.takeFromMac,
+                  icon: const Icon(Icons.swap_horiz),
+                  label: const Text('Take the pendant from the Mac'),
+                ),
+              ],
               if (c.lastEarmark != null) ...[
                 const SizedBox(height: 10),
                 Text('Last earmark ${DateFormat.Hm().format(c.lastEarmark!)}', style: tt.bodySmall),
@@ -136,7 +145,9 @@ class _NowScreenState extends State<NowScreen> {
             ? ('Paused', 'Nothing is being recorded. Double-tap the pendant or press Resume.', t.due, false)
             : ('Recording', 'Audio is saved on this phone and sent to your Mac.', t.live, true);
       case PendantState.connecting:
-        return ('Connecting', 'Waiting for the pendant. While it is away it records to its own memory.', t.ink3, true);
+        return c.macHasPendant
+            ? ('Mac has the pendant', 'Your Mac is recording. Take it over here, or it moves to this phone by itself when you leave the Mac.', t.ink3, false)
+            : ('Connecting', 'Waiting for the pendant. While it is away it records to its own memory.', t.ink3, true);
       case PendantState.searching:
         return ('Looking for the pendant', 'Keep it close and switched on. Quit the Omi app if it is open.', t.ink3, true);
       case PendantState.bluetoothOff:

@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "app.earmark.earmark"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37 // permission_handler needs 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

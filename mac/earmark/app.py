@@ -364,6 +364,12 @@ def _phone_holder() -> Optional[dict]:
     return best
 
 
+def _phone_wanting() -> Optional[dict]:
+    now = time.time()
+    live = [st for st in S.app_state.values() if st.get("wants_pendant") and now - st["at"] < AS.HOLD_TTL_S]
+    return max(live, key=lambda st: st["at"]) if live else None
+
+
 def _phone_wants_pendant() -> bool:
     now = time.time()
     return any((st.get("holds_pendant") or st.get("wants_pendant")) and now - st["at"] < AS.HOLD_TTL_S
@@ -392,8 +398,8 @@ async def pendant_loop():
         S.say(f"recovered an interrupted recording ({int(s.duration_s // 60)} min)")
     while True:
         cfg = load_config()
-        holder = _phone_holder()
-        if holder:
+        holder = _phone_holder() or _phone_wanting()
+        if holder:                               # the phone has the pendant, or is about to: stay out
             _phone_status_into_state(holder)
             await _wait_wake(10)
             S.wake.clear()
@@ -1305,7 +1311,7 @@ def api_app_heartbeat(request: Request, body: dict):
     first = dev["id"] not in S.app_state or not S.app_state[dev["id"]].get("holds_pendant")
     was_holding = not first
     S.app_state[dev["id"]] = st
-    if was_holding and not st["holds_pendant"] and not _phone_holder():
+    if was_holding and not st["holds_pendant"] and not st["wants_pendant"] and not _phone_holder():
         S.pendant.update(via=None, connected=bool(S.pd))
         S.say(f"{st['device_name']} let go of the pendant")
         S.wake.set()
