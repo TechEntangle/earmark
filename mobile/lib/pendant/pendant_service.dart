@@ -2,6 +2,7 @@
 // streams Opus frames, reports battery and button presses, and plays vibrations.
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
@@ -32,8 +33,15 @@ class PendantService extends ChangeNotifier {
   /// Called when a pendant is first found, so it can be remembered.
   void Function(String id)? onPaired;
 
+  /// Runs after connecting and before live audio starts: copy what the pendant recorded
+  /// into its own memory while it was away (see [ringInfo], [ringRead], [ringAdvance]).
+  Future<void> Function()? catchUp;
+  bool catchingUp = false;
+  double catchUpProgress = 0;
+
   bool _wanted = false;
-  StreamSubscription? _statusSub, _scanSub, _connSub, _audioSub, _buttonSub, _battSub;
+  StreamSubscription? _statusSub, _scanSub, _connSub, _audioSub, _buttonSub, _battSub, _ringSub;
+  StreamController<List<int>>? _ringQ;
   Timer? _retry, _battTimer;
   late FrameAssembler _asm = FrameAssembler(_frames.add);
   int _attempt = 0;
@@ -157,6 +165,26 @@ class PendantService extends ChangeNotifier {
     } catch (_) {}
     await syncClock();
     await _readBattery();
+    connectedAt = DateTime.now();
+    _set(PendantState.connected);
+    if (catchUp != null) {
+      try {
+        _ringQ = StreamController<List<int>>.broadcast();
+        _ringSub = ble.subscribeToCharacteristic(_c(OmiUuids.ringService, OmiUuids.ringCtrl)).listen(_ringQ!.add, onError: (_) {});
+        catchingUp = true;
+        notifyListeners();
+        await catchUp!();
+      } catch (e) {
+        lastError = 'catch-up: $e';
+      } finally {
+        catchingUp = false;
+        await _ringSub?.cancel();
+        _ringSub = null;
+        await _ringQ?.close();
+        _ringQ = null;
+        notifyListeners();
+      }
+    }
     _asm = FrameAssembler(_frames.add);
     _audioSub = ble.subscribeToCharacteristic(_c(OmiUuids.audioService, OmiUuids.audioData)).listen(_asm.add,
         onError: (e) => lastError = 'audio: $e');
@@ -173,7 +201,6 @@ class PendantService extends ChangeNotifier {
     } catch (_) {}
     _battTimer?.cancel();
     _battTimer = Timer.periodic(const Duration(minutes: 2), (_) => _readBattery());
-    connectedAt = DateTime.now();
     lastError = null;
     _set(PendantState.connected);
   }
@@ -235,6 +262,63 @@ class PendantService extends ChangeNotifier {
       return false;
     }
   }
+
+  // ---- the pendant's own memory
+  Future<List<int>> _ringReply(bool Function(List<int>) want, Duration timeout) =>
+      _ringQ!.stream.firstWhere((m) {
+        if (m.isNotEmpty && m[0] == Ring.nAck && m.length > 1 && m[1] != 0) {
+          throw StateError(Ring.statusText[m[1]] ?? 'status ${m[1]}');
+        }
+        return want(m);
+      }).timeout(timeout);
+
+  Future<RingInfo> ringInfo() async {
+    final f = _ringReply((m) => RingInfo.parse(m) != null, const Duration(seconds: 10));
+    await ble.writeCharacteristicWithResponse(_c(OmiUuids.ringService, OmiUuids.ringCtrl), value: Ring.info());
+    return RingInfo.parse(await f)!;
+  }
+
+  /// Read up to [count] records starting at [start]. Returns the bytes and the next sequence.
+  Future<(Uint8List, int)> ringRead(int start, int count) async {
+    final buf = BytesBuilder(copy: false);
+    final done = Completer<int>();
+    Timer? stall;
+    void arm() {
+      stall?.cancel();
+      stall = Timer(const Duration(seconds: 20), () {
+        if (!done.isCompleted) done.completeError(StateError('transfer stalled after ${buf.length} bytes'));
+      });
+    }
+    final sub = _ringQ!.stream.listen((m) {
+      if (m.isEmpty) return;
+      if (m[0] == Ring.nData) {
+        buf.add(m.sublist(1));
+        arm();
+      } else if (m[0] == Ring.nDone) {
+        final r = parseRingDone(m);
+        if (r == null) return;
+        if (r.$1 != 0) {
+          done.completeError(StateError('read failed: ${Ring.statusText[r.$1] ?? 'status ${r.$1}'}'));
+        } else {
+          done.complete(r.$2);
+        }
+      } else if (m[0] == Ring.nAck && m.length > 1 && m[1] != 0 && !done.isCompleted) {
+        done.completeError(StateError(Ring.statusText[m[1]] ?? 'status ${m[1]}'));
+      }
+    });
+    try {
+      arm();
+      await ble.writeCharacteristicWithResponse(_c(OmiUuids.ringService, OmiUuids.ringCtrl), value: Ring.read(start, count));
+      final next = await done.future;
+      return (buf.takeBytes(), next);
+    } finally {
+      stall?.cancel();
+      await sub.cancel();
+    }
+  }
+
+  Future<void> ringAdvance(int seq) =>
+      ble.writeCharacteristicWithResponse(_c(OmiUuids.ringService, OmiUuids.ringCtrl), value: Ring.advance(seq));
 
   Future<bool> syncClock() => _write(OmiUuids.timeService, OmiUuids.timeWrite, clockBytes(DateTime.now()));
   Future<bool> setLed(int pct) => _write(OmiUuids.settingsService, OmiUuids.dimRatio, [pct.clamp(0, 100)]);

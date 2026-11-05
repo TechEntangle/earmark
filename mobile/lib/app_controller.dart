@@ -51,12 +51,14 @@ class EarmarkController extends ChangeNotifier {
   Timer? _beat, _pump;
   bool _uploading = false;
   File? _eventsFile;
+  Directory? _ringDir;
 
   // ------------------------------------------------------------ lifecycle
   Future<void> init() async {
     final docs = await getApplicationSupportDirectory();
     store = ChunkStore(Directory('${docs.path}/recordings'));
     _eventsFile = File('${docs.path}/pending_events.json');
+    _ringDir = Directory('${docs.path}/from_pendant_memory')..createSync(recursive: true);
     if (_eventsFile!.existsSync()) {
       try {
         _events.addAll((jsonDecode(_eventsFile!.readAsStringSync()) as List).cast<Map<String, dynamic>>());
@@ -66,6 +68,7 @@ class EarmarkController extends ChangeNotifier {
     pairing = await config.pairing();
     if (pairing != null) api = Api(pairing!.server, pairing!.token);
     pendant.onPaired = (id) => config.savePendantId(id);
+    pendant.catchUp = _catchUp;
     pendant.addListener(_onPendant);
     _frameSub = pendant.frames.listen(_onFrame);
     _btnSub = pendant.buttons.listen(_taps.handle);
@@ -255,12 +258,63 @@ class EarmarkController extends ChangeNotifier {
     }
   }
 
+  // ------------------------------------------------------------ the pendant's own memory
+  int? _ringCursor() {
+    final f = File('${_ringDir!.path}/cursor');
+    return f.existsSync() ? int.tryParse(f.readAsStringSync().trim()) : null;
+  }
+
+  /// Copy what the pendant recorded while away. Each batch is on disk before the pendant is
+  /// told it may reuse that memory; the Mac turns it into conversations later.
+  Future<void> _catchUp() async {
+    final info = await pendant.ringInfo();
+    var seq = info.readSeq;
+    final end = info.writeSeq;
+    final local = _ringCursor();
+    if (local != null && local > seq && local <= end) seq = local;
+    if (seq >= end) return;
+    final total = end - seq;
+    while (seq < end) {
+      pendant.catchUpProgress = 1 - (end - seq) / total;
+      notifyListeners();
+      final (raw, next) = await pendant.ringRead(seq, (end - seq).clamp(1, 256));
+      final keep = raw.length - raw.length % Ring.record;
+      if (keep > 0) {
+        final f = File('${_ringDir!.path}/${seq}_$next.ring');
+        final h = f.openSync(mode: FileMode.writeOnly);
+        h.writeFromSync(raw, 0, keep);
+        h.flushSync();
+        h.closeSync();
+      }
+      await pendant.ringAdvance(next);
+      File('${_ringDir!.path}/cursor').writeAsStringSync('$next');
+      if (next <= seq) break; // nothing more could be read
+      seq = next;
+    }
+    unawaited(pumpUploads());
+  }
+
   /// Send finished chunks to the Mac, oldest first; delete each only once the Mac has it.
   Future<void> pumpUploads() async {
     final a = api, s = store;
     if (a == null || s == null || _uploading) return;
     _uploading = true;
     try {
+      for (final f in (_ringDir?.listSync() ?? []).whereType<File>().where((f) => f.path.endsWith('.ring')).toList()
+        ..sort((x, y) => x.path.compareTo(y.path))) {
+        final parts = f.uri.pathSegments.last.split('.').first.split('_');
+        try {
+          await a.uploadRing(f.readAsBytesSync(), start: int.parse(parts[0]), next: int.parse(parts[1]));
+        } on ApiError catch (e) {
+          if (e.status == 400 || e.status == 413) {
+            f.renameSync('${f.path}.rejected');
+            continue;
+          }
+          rethrow;
+        }
+        f.deleteSync();
+        lastUpload = DateTime.now();
+      }
       for (final c in s.pending()) {
         final body = await c.file.readAsBytes();
         if (body.isEmpty) {

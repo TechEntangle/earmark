@@ -97,6 +97,14 @@ class Api {
     return Map<String, dynamic>.from(r as Map);
   }
 
+  /// Raw records copied from the pendant's own memory (444-byte records, see mac/earmark/pendant.py).
+  Future<Map<String, dynamic>> uploadRing(Uint8List body, {required int start, required int next}) async {
+    final r = await _json(client.post(_u('/api/app/ring'),
+        headers: {..._headers, 'Content-Type': 'application/octet-stream', 'X-Earmark-Ring-Start': '$start', 'X-Earmark-Ring-Next': '$next'},
+        body: body));
+    return Map<String, dynamic>.from(r as Map);
+  }
+
   Future<void> event(String type, {DateTime? at}) => post('/api/app/event',
       {'type': type, 'at': (at ?? DateTime.now()).millisecondsSinceEpoch / 1000});
 

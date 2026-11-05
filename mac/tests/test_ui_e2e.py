@@ -628,3 +628,19 @@ def test_phone_app_pairs_uploads_and_takes_the_pendant(server):
     # bad input is refused
     assert _app_call(server, "/api/app/audio", tok, raw=b"\x00\x05ab",
                      headers={"X-Earmark-Start": str(time.time()), "X-Earmark-Seq": "9"})[0] == 400
+
+
+def test_phone_forwards_the_pendants_own_memory(server):
+    code = call(server, "/api/phone/code", "POST", {})["code"]
+    tok = _app_call(server, "/api/app/pair", body={"code": code, "name": "Ring phone"})[1]["token"]
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from earmark import fake_pendant
+    f = fake_pendant._Fake()                       # a separate simulated pendant memory
+    f.add_offline(20, ended_ago=3600)
+    raw = bytes(f.ring)
+    n0 = len([x for x in call(server, "/api/sessions") if x.get("source") == "pendant"])
+    st, r = _app_call(server, "/api/app/ring", tok, raw=raw, headers={"X-Earmark-Ring-Start": "0", "X-Earmark-Ring-Next": str(len(raw) // 444)})
+    assert st == 200 and r["records"] == len(raw) // 444
+    assert _app_call(server, "/api/app/ring", tok, raw=raw, headers={"X-Earmark-Ring-Start": "0", "X-Earmark-Ring-Next": str(len(raw) // 444)})[1].get("duplicate")
+    wait_for(lambda: len([x for x in call(server, "/api/sessions") if x.get("source") == "pendant"]) > n0, 30, "conversation from the pendant's memory")
+    assert _app_call(server, "/api/app/ring", tok, raw=raw[:100], headers={"X-Earmark-Ring-Start": "5", "X-Earmark-Ring-Next": "6"})[0] == 400

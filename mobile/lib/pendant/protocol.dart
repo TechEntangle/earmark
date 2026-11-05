@@ -24,6 +24,9 @@ class OmiUuids {
   static const firmwareRev = '00002a26-0000-1000-8000-00805f9b34fb';
   static const buttonService = '23ba7924-0000-1000-7450-346eac492e92';
   static const button = '23ba7925-0000-1000-7450-346eac492e92'; // int32 LE events
+  static const ringService = '30295780-4301-eabd-2904-2849adfeae43'; // the pendant's own memory
+  static const ringCtrl = '30295781-4301-eabd-2904-2849adfeae43';
+  static const ringStat = '30295782-4301-eabd-2904-2849adfeae43';
   static const hapticService = 'cab1ab95-2ea5-4f4d-bb56-874b72cfc984';
   static const haptic = 'cab1ab96-2ea5-4f4d-bb56-874b72cfc984'; // 1=100ms 2=300ms 3=500ms
 }
@@ -141,4 +144,56 @@ class TapInterpreter {
 List<int> clockBytes(DateTime t) {
   final b = ByteData(4)..setUint32(0, t.millisecondsSinceEpoch ~/ 1000, Endian.little);
   return b.buffer.asUint8List();
+}
+
+
+// ---------------------------------------------------------------- the pendant's own memory
+// While nothing is connected the pendant records into a ring of 444-byte records
+// (4-byte big-endian timestamp + packed Opus). Commands go to ringCtrl; replies arrive as
+// notifications on the same characteristic.
+class Ring {
+  static const record = 444;
+  static const cmdStop = 0x03, cmdInfo = 0x10, cmdRead = 0x11, cmdAdvance = 0x12;
+  static const nAck = 0x01, nInfo = 0x02, nData = 0x03, nDone = 0x04;
+  static const statusText = {6: 'invalid command', 9: 'storage not ready', 10: 'sequence out of range'};
+
+  static List<int> info() => [cmdInfo];
+  static List<int> read(int start, int count) {
+    final b = ByteData(13)
+      ..setUint8(0, cmdRead)
+      ..setUint64(1, start, Endian.big)
+      ..setUint32(9, count, Endian.big);
+    return b.buffer.asUint8List();
+  }
+
+  static List<int> advance(int seq) {
+    final b = ByteData(9)
+      ..setUint8(0, cmdAdvance)
+      ..setUint64(1, seq, Endian.big);
+    return b.buffer.asUint8List();
+  }
+
+  /// Seconds of audio in [records] records (about 4000 bytes of Opus per second).
+  static double seconds(int records) => records * 440 / 4000;
+}
+
+class RingInfo {
+  final int readSeq, writeSeq, capacity, dropped, packetSize;
+  const RingInfo(this.readSeq, this.writeSeq, this.capacity, this.dropped, this.packetSize);
+  int get unread => writeSeq > readSeq ? writeSeq - readSeq : 0;
+
+  /// INFO notification: [0x02][read u64][write u64][capacity u32][dropped u64][packet u16], big endian.
+  static RingInfo? parse(List<int> m) {
+    if (m.length < 31 || m[0] != Ring.nInfo) return null;
+    final d = ByteData.sublistView(Uint8List.fromList(m));
+    return RingInfo(d.getUint64(1, Endian.big), d.getUint64(9, Endian.big), d.getUint32(17, Endian.big),
+        d.getUint64(21, Endian.big), d.getUint16(29, Endian.big));
+  }
+}
+
+/// DONE notification: [0x04][status u8][next u64] -> (status, next sequence).
+(int, int)? parseRingDone(List<int> m) {
+  if (m.length < 10 || m[0] != Ring.nDone) return null;
+  final d = ByteData.sublistView(Uint8List.fromList(m));
+  return (d.getUint8(1), d.getUint64(2, Endian.big));
 }

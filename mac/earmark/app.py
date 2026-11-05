@@ -1355,6 +1355,38 @@ async def api_app_audio(request: Request):
     return {"ok": True, "last_seq": seq, "frames": len(frames)}
 
 
+@app.post("/api/app/ring")
+async def api_app_ring(request: Request):
+    """Audio the phone copied from the pendant's own memory: raw 444-byte records, handled
+    exactly like a sync the Mac did itself (saved, then decoded into conversations)."""
+    dev = _app_device(request)
+    try:
+        start = int(request.headers.get("x-earmark-ring-start", ""))
+        nxt = int(request.headers.get("x-earmark-ring-next", ""))
+    except ValueError:
+        raise HTTPException(400, "X-Earmark-Ring-Start and X-Earmark-Ring-Next are required")
+    body = await request.body()
+    if len(body) > 16 * 1024 * 1024:
+        raise HTTPException(413, "too large")
+    if not body or len(body) % RECORD:
+        raise HTTPException(400, "pendant records must be whole 444-byte records")
+    key = f"ring_{dev['id']}_{start}_{nxt}"
+    if kv_get(key):
+        return {"ok": True, "duplicate": True}
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    p = RAW_DIR / f"{int(time.time())}_{start}_{nxt}_phone{dev['id']}.bin"
+    with open(p, "wb") as fh:
+        fh.write(body)
+        fh.flush()
+        os.fsync(fh.fileno())
+    kv_set(key, 1)
+    S.last_sync_at = int(time.time())
+    kv_set("last_sync_at", S.last_sync_at)
+    S.say(f"copied {max(1, round(len(body) / RECORD * 440 / 4000 / 60))} min from the pendant's memory (via the phone)")
+    asyncio.get_running_loop().create_task(decode_pending(load_config()))
+    return {"ok": True, "records": len(body) // RECORD}
+
+
 def _phone_session(s: PL.DecodedSession):
     add_session(s, "phone")
     S.say(f"session from the phone saved ({int(s.duration_s // 60)} min {int(s.duration_s % 60)} s), queued for transcription")
