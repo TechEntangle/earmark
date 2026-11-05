@@ -31,11 +31,17 @@ open ios/Runner.xcworkspace
 ```
 
 In Xcode: select **Runner** → *Signing & Capabilities* → choose your **Team** (bundle id
-`app.earmark`). Plug in or select your iPhone and press **Run**. For TestFlight: Product → Archive.
+`app.earmark`; if Xcode says it is not available, change it to something of your own such as
+`com.yourname.earmark`). Plug in or select your iPhone and press **Run**. For TestFlight:
+Product → Archive.
+
+Or double-click **Set Up Phone App** in the Mac's Earmark folder: it installs Flutter if needed
+(no Homebrew required), prepares the project and opens Xcode.
 
 ## Run on Android
 
-Emulator (Android Studio → Device Manager → a Pixel with Android 14+):
+Emulator: double-click **Try Android App** in the Mac's Earmark folder (needs Android Studio
+installed once), or by hand (Android Studio → Device Manager → a Pixel with Android 14+):
 
 ```
 cd mobile
