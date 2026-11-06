@@ -1,9 +1,11 @@
 #!/bin/bash
-# Earmark build helper. While this window is open, Claude can compile the iPhone app on this Mac
-# and install it on your iPhone (cable or same Wi-Fi), so you don't have to press Run in Xcode.
-# It only builds the project in ./mobile, when a request file appears there. Close to stop.
+# Earmark build helper (v3). While this window is open, Claude can compile the iPhone and Mac apps
+# on this Mac and install the iPhone app (cable or same Wi-Fi), keeping the app's data.
+# Keeps the Mac awake while it runs. It only builds the project in ./mobile, when a request file
+# appears there. Close the window to stop.
 cd "$(dirname "$0")/mobile" || exit 1
-echo "Earmark build helper is running. Leave this window open; close it to stop."
+echo "Earmark build helper v3 is running. Leave this window open; close it to stop."
+caffeinate -dimsu -w $$ &
 rm -f .build_request
 while true; do
   if [ -f .build_request ]; then

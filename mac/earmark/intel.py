@@ -650,6 +650,8 @@ def _fake(system: str, user: str) -> str:
                     dups.append({"new": i, "id": ot["id"]})
                     break
         return json.dumps({"completed": [], "duplicates": dups})
+    if system.startswith("You answer questions about the user's own recorded conversations"):
+        return json.dumps({"answer": "Rahul is sending the vendor contract to procurement by Thursday.", "used": [1]})
     if system is DAY_SYSTEM:
         return json.dumps({"headline": "Pilot launch reviewed; budget held flat",
                            "summary": "You reviewed the pilot launch plan and agreed to keep the budget unchanged. Rahul is sending the vendor contract.",

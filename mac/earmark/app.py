@@ -1716,6 +1716,151 @@ def api_pause(body: dict):
     return {"ok": True, "paused": S.paused}
 
 
+@app.post("/api/earmark")
+def api_earmark():
+    """Earmark this moment (the Mac app's menu bar, or a keyboard shortcut)."""
+    if S.paused:
+        return {"ok": False, "detail": "Recording is paused"}
+    _commit_earmark(time.time())
+    return {"ok": True, "at": S.last_earmark}
+
+
+ASK_SYSTEM = """You answer questions about the user's own recorded conversations, using only the numbered excerpts given.
+Reply in JSON: {"answer": "...", "used": [numbers of the excerpts you relied on]}.
+The answer is short and direct (one to four sentences, or a short list), in plain English, and says when something
+was said if that helps. "I" and "me" in the question are the user. If the excerpts don't contain the answer, say so
+plainly in one sentence and use []. Never invent names, dates or numbers."""
+
+
+def _ask_span(q: str, now: datetime):
+    """The stretch of time a question names (today, yesterday, a weekday, this/last week), as epoch seconds."""
+    import re as _re
+    from datetime import timedelta
+    q = q.lower()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    ts = lambda d: d.timestamp()
+    if _re.search(r"\b(today|this morning|this afternoon|tonight|this evening)\b", q):
+        return ts(today), ts(now)
+    if _re.search(r"\byesterday\b", q):
+        return ts(today - timedelta(days=1)), ts(today)
+    mon = today - timedelta(days=today.weekday())
+    if _re.search(r"\bthis week\b", q):
+        return ts(mon), ts(now)
+    if _re.search(r"\blast week\b", q):
+        return ts(mon - timedelta(days=7)), ts(mon)
+    for i, name in enumerate(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]):
+        if _re.search(rf"\b{name}\b", q):
+            back = (today.weekday() - i) % 7 or 7
+            d = today - timedelta(days=back)
+            return ts(d), ts(d + timedelta(days=1))
+    return None
+
+
+_ASK_STOP = set("the and for with that this what when where who did does was were are you your about from have has had "
+                "will would should could can how why which there their they them any all our out into over tell say "
+                "said just like get got than then also its it's his her me my i we us".split())
+
+
+def _ask_terms(s: str) -> list:
+    import re as _re
+    return [w for w in _re.split(r"[^a-z0-9']+", s.lower()) if len(w) >= 3 and w not in _ASK_STOP]
+
+
+def ask_passages(q: str, now: Optional[datetime] = None, k: int = 10) -> list:
+    """The best excerpts for a question: notes, tasks and transcript windows, scored by rare-word overlap,
+    and the conversations of a named day."""
+    import math
+    now = now or datetime.now()
+    span = _ask_span(q, now)
+    with db() as c:
+        if span:
+            rows = c.execute("SELECT * FROM sessions WHERE started_at < ? AND ended_at > ? AND status='done' "
+                             "ORDER BY started_at", (span[1], span[0])).fetchall()
+        else:
+            rows = c.execute("SELECT * FROM sessions WHERE status='done' ORDER BY started_at DESC LIMIT 400").fetchall()
+        tasks = [dict(t) for t in c.execute("SELECT * FROM tasks WHERE status!='dismissed'")]
+    ps = []
+    for r in rows:
+        notes = json.loads(r["notes_json"] or "{}") if "notes_json" in r.keys() else {}
+        head = " ".join(x for x in [r["title"] or "", notes.get("summary") or "",
+                                     "; ".join(notes.get("key_points") or []),
+                                     ("Decided: " + "; ".join(notes["decisions"])) if notes.get("decisions") else ""] if x)
+        if head.strip():
+            ps.append({"sid": r["id"], "t": 0.0, "kind": "notes", "text": head, "at": r["started_at"]})
+        segs = json.loads(r["transcript_json"] or "[]")
+        buf, start, n = [], None, 0
+        for g in segs:
+            if start is None:
+                start = g["start"]
+            buf.append(g["text"])
+            n += len(g["text"].split())
+            if n >= 70:
+                ps.append({"sid": r["id"], "t": start, "kind": "talk", "text": " ".join(buf), "at": r["started_at"] + start})
+                buf, start, n = [], None, 0
+        if buf:
+            ps.append({"sid": r["id"], "t": start or 0.0, "kind": "talk", "text": " ".join(buf), "at": r["started_at"] + (start or 0)})
+    sids = {r["id"] for r in rows}
+    for t in tasks:
+        if span and t.get("session_id") not in sids:
+            continue
+        who = "me" if (t.get("owner") or "me") == "me" else t["owner"]
+        ps.append({"sid": t.get("session_id"), "t": t.get("t") or 0.0, "kind": "task", "at": t.get("created_at") or 0,
+                   "text": f"Task for {who}{' (' + t['due_text'] + ')' if t.get('due_text') else ''}: {t['text']}"
+                           f"{' (done)' if t.get('status') == 'done' else ''}"})
+    qt = set(_ask_terms(q))
+    n = max(1, len(ps))
+    df = {}
+    pts = [set(_ask_terms(p["text"])) for p in ps]
+    for st in pts:
+        for w in st & qt:
+            df[w] = df.get(w, 0) + 1
+    idf = {w: math.log(1 + n / (1 + df.get(w, 0))) for w in qt}
+    total = sum(idf.values()) or 1
+    for p, st in zip(ps, pts):
+        p["score"] = sum(idf[w] for w in st & qt) / total + (0.05 if p["kind"] == "notes" else 0) + (0.3 if span else 0)
+    ps.sort(key=lambda p: -p["score"])
+    if not ps or ps[0]["score"] <= 0.05:
+        return []
+    top = ps[0]["score"]
+    out, per = [], {}
+    for p in ps:
+        if p["score"] < top * 0.5:
+            break
+        if per.get(p["sid"], 0) >= 3:
+            continue
+        per[p["sid"]] = per.get(p["sid"], 0) + 1
+        out.append(p)
+        if len(out) >= k:
+            break
+    return out
+
+
+@app.post("/api/ask")
+async def api_ask(body: dict):
+    q = str(body.get("q") or "").strip()
+    if len(q) < 2:
+        raise HTTPException(400, "Ask a question")
+    ps = ask_passages(q)
+    if not ps:
+        return {"answer": None, "passages": [], "used": []}
+    cfg = load_config()
+    lines = []
+    for i, p in enumerate(ps, 1):
+        lines.append(f"[{i}] {datetime.fromtimestamp(p['at']):%a %d %b %H:%M} ({p['kind']})\n{p['text']}")
+    user = f"Now: {datetime.now():%A %d %B %Y %H:%M}\nQuestion: {q}\n\nExcerpts:\n" + "\n\n".join(lines)
+    try:
+        loop = asyncio.get_running_loop()
+        if cfg.get("intel_provider") == "local" and os.environ.get("EARMARK_FAKE_LLM") != "1":
+            await loop.run_in_executor(MLX, IN.ensure_local_runtime)
+        raw = await loop.run_in_executor(MLX, lambda: IN.generate_text(cfg, ASK_SYSTEM, user, 500))
+        j = IN.parse_json(raw) or {}
+        ans = str(j.get("answer") or "").strip() or None
+        used = [int(x) for x in (j.get("used") or []) if str(x).isdigit() and 1 <= int(x) <= len(ps)]
+        return {"answer": ans, "passages": ps, "used": used}
+    except Exception as e:
+        return {"answer": None, "passages": ps, "used": [], "error": str(e)[:200]}
+
+
 @app.post("/api/restart")
 def api_restart():
     def _go():

@@ -75,6 +75,11 @@ class Api {
   Future<dynamic> patch(String path, Object body) => _json(client.patch(_u(path),
       headers: {..._headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
 
+  Future<dynamic> put(String path, Object body) => _json(client.put(_u(path),
+      headers: {..._headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<dynamic> delete(String path) => _json(client.delete(_u(path), headers: _headers));
+
   // ---- app endpoints (mac/earmark/appsync.py)
   Future<String> pair(String code, String deviceName, String platform) async {
     final r = await post('/api/app/pair', {'code': code, 'name': deviceName, 'platform': platform});

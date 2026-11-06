@@ -412,6 +412,18 @@ def test_press_and_hold_does_what_settings_say(page: Page, server):
         call(server, "/api/settings", "PUT", {"hold_action": "none", "tap_action": "earmark"})
 
 
+def test_ask_and_earmark_from_the_mac_app(server):
+    r = call(server, "/api/ask", "POST", {"q": "When is the vendor contract coming?"})
+    assert r["passages"] and r["answer"] and r["used"] == [1]
+    assert "vendor contract" in r["passages"][0]["text"].lower()
+    assert call(server, "/api/ask", "POST", {"q": "zebra migration patterns"})["passages"] == []
+    r = call(server, "/api/ask", "POST", {"q": "what happened today"})
+    assert r["passages"], "a day question uses that day's conversations"
+    marks0 = len(call(server, "/api/day")["earmarks"])
+    assert call(server, "/api/earmark", "POST", {})["ok"]
+    assert len(call(server, "/api/day")["earmarks"]) == marks0 + 1
+
+
 def test_earmarked_moment_shows_in_the_conversation(page: Page, server):
     sid = next(x["id"] for x in call(server, "/api/sessions")
                if "vendor contract" in json.dumps(call(server, f"/api/sessions/{x['id']}")))
