@@ -19,6 +19,7 @@ import 'pendant/protocol.dart';
 import 'recorder/chunk_store.dart';
 import 'ask/ask_index.dart';
 import 'notes/conversations.dart';
+import 'notes/due.dart';
 import 'notes/voices.dart';
 import 'transcribe/heard.dart';
 
@@ -44,6 +45,8 @@ class LocalAsr {
   bool get speakersSupported => EarmarkSpeakers.supported;
   Future<Diarization> diarize(List<String> paths, List<double> offsets) => EarmarkSpeakers.diarize(paths, offsets);
   Future<String> notesAvailability() => EarmarkNotes.availability();
+  Future<bool> remindersAccess() => EarmarkReminders.access();
+  Future<List<String>> remindersSync(List<Map<String, Object?>> items) => EarmarkReminders.sync(items);
   Future<List<List<double>>> embed(List<String> texts) => EarmarkNotes.embed(texts);
   Future<(String, List<int>)> answer(String q, List<String> excerpts, {String today = ''}) =>
       EarmarkNotes.answer(q, excerpts, today: today);
@@ -78,6 +81,10 @@ class EarmarkController extends ChangeNotifier {
   Conversations? convs;
   VoiceBook? voiceBook;
   AskIndex? askIndex;
+  /// Send my tasks to Apple Reminders.
+  bool remindersOn = false;
+  String? remindersError;
+  DateTime? _remindersAt;
   bool _indexing = false;
   /// Apple's on-device model: available | notEligible | notEnabled | notReady | unsupported | unknown
   String notesState = 'unknown';
@@ -241,6 +248,7 @@ class EarmarkController extends ChangeNotifier {
       earmarks.addAll([for (final x in jsonDecode(_earmarksFile!.readAsStringSync()) as List) (x as num).toDouble()]);
     } catch (_) {}
     transcribeHere = await config.transcribeHere();
+    remindersOn = await config.reminders();
     pairing = await config.pairing();
     if (pairing != null) api = Api(pairing!.server, pairing!.token);
     pendant.onPaired = (id) => config.savePendantId(id);
@@ -259,6 +267,7 @@ class EarmarkController extends ChangeNotifier {
       await pumpUploads();
       await fillFromMac();
       await updateAskIndex();
+      await syncReminders();
     });
     unawaited(_checkNotes());
     unawaited(heartbeat());
@@ -532,6 +541,66 @@ class EarmarkController extends ChangeNotifier {
     unawaited(processConversations());
   }
 
+  // ---- Apple Reminders
+  Future<void> setReminders(bool on) async {
+    if (on && !await asrEngine.remindersAccess()) {
+      remindersError = 'Allow Reminders for Earmark in Settings → Earmark.';
+      remindersOn = false;
+      notifyListeners();
+      return;
+    }
+    remindersOn = on;
+    remindersError = null;
+    await config.saveReminders(on);
+    notifyListeners();
+    if (on) await syncReminders(force: true);
+  }
+
+  /// My tasks into the "Earmark" list in Reminders (with due dates), and ticks back from it.
+  Future<void> syncReminders({bool force = false, DateTime? now}) async {
+    final cs = convs;
+    if (!remindersOn || cs == null || !pendant.foreground) return;
+    final t = now ?? DateTime.now();
+    if (!force && _remindersAt != null && t.difference(_remindersAt!) < const Duration(seconds: 60)) return;
+    _remindersAt = t;
+    final items = <Map<String, Object?>>[];
+    final byId = <String, ConvTask>{};
+    for (final v in cs.all) {
+      for (final k in v.tasks) {
+        if (!k.mine) continue;
+        final due = k.due.isEmpty ? null : parseDue(k.due, v.startTime);
+        byId[k.id] = k;
+        items.add({
+          'id': k.id,
+          'title': k.text,
+          'notes': 'From "${convTitleText(v)}" (${_stamp(v.start)})${k.due.isNotEmpty ? '\nSaid: ${k.due}' : ''}',
+          if (due != null) 'due': due.at.millisecondsSinceEpoch / 1000,
+          'timed': due?.timed ?? false,
+          'done': k.done,
+        });
+      }
+    }
+    try {
+      final done = await asrEngine.remindersSync(items);
+      var changed = false;
+      for (final id in done) {
+        final k = byId[id];
+        if (k != null && !k.done) {
+          k.done = true;
+          changed = true;
+        }
+      }
+      remindersError = null;
+      if (changed) {
+        cs.save();
+      }
+      notifyListeners();
+    } catch (e) {
+      remindersError = '$e';
+      notifyListeners();
+    }
+  }
+
   // ---- editing conversations
   void renameConversation(Conversation v, String title) {
     final t = title.trim();
@@ -695,6 +764,7 @@ class EarmarkController extends ChangeNotifier {
     t.done = done;
     convs?.save();
     notifyListeners();
+    unawaited(syncReminders(force: true));
   }
 
   /// Write a conversation's notes again (e.g. after it failed).

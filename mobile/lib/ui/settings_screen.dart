@@ -54,6 +54,15 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 if (c.transcribeHere) ...[
                   const Divider(),
+                  SwitchListTile(
+                    key: const Key('remindersSwitch'),
+                    title: const Text('Send my tasks to Reminders'),
+                    subtitle: Text(c.remindersError ?? 'Your tasks appear in a Reminders list called Earmark, with due dates and alerts. Ticking one off there ticks it off here.',
+                        style: tt.bodySmall),
+                    value: c.remindersOn,
+                    onChanged: c.setReminders,
+                  ),
+                  const Divider(),
                   ListTile(
                     title: const Text('Notes and tasks'),
                     subtitle: Text(c.notesState == 'available'

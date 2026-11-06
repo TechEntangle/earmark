@@ -78,6 +78,10 @@
 	<array>
 		<string>com.pravera.flutter_foreground_task.refresh</string>
 	</array>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Earmark puts your tasks in a Reminders list called Earmark, and ticks them off when you do.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Earmark puts your tasks in a Reminders list called Earmark, and ticks them off when you do.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

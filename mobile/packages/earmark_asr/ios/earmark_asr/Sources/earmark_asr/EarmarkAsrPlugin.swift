@@ -30,6 +30,7 @@ public final class EarmarkAsrPlugin: NSObject, FlutterPlugin {
         NotesChannel.register(with: registrar)
         AudioChannel.register(with: registrar)
         SpeakersChannel.register(with: registrar)
+        RemindersChannel.register(with: registrar)
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

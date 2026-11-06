@@ -48,6 +48,10 @@ class ConfigStore {
   Future<bool> transcribeHere() async => (await _s.read(key: 'transcribe_here')) != '0';
   Future<void> saveTranscribeHere(bool on) => _s.write(key: 'transcribe_here', value: on ? '1' : '0');
 
+  /// Send my tasks to Apple Reminders (off unless turned on).
+  Future<bool> reminders() async => (await _s.read(key: 'reminders')) == '1';
+  Future<void> saveReminders(bool on) => _s.write(key: 'reminders', value: on ? '1' : '0');
+
   Future<bool> paused() async => (await _s.read(key: 'paused')) == '1';
   Future<void> savePaused(bool p) => _s.write(key: 'paused', value: p ? '1' : '0');
 }

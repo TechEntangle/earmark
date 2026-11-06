@@ -199,3 +199,18 @@ class EarmarkSpeakers {
     });
   }
 }
+
+/// Tasks in Apple Reminders (an "Earmark" list), both ways.
+class EarmarkReminders {
+  static const _ch = MethodChannel('earmark/reminders');
+  static bool get supported => Platform.isIOS;
+
+  static Future<bool> access() async => ((await _ch.invokeMethod('access')) as Map)['granted'] == true;
+
+  /// items: {id, title, notes, due (epoch s)?, timed, done}. Returns ids completed in Reminders.
+  static Future<List<String>> sync(List<Map<String, Object?>> items) async {
+    final m = Map<String, dynamic>.from(await _ch.invokeMethod('sync', {'items': items}) as Map);
+    if (m['error'] != null) throw Exception('${m['error']}');
+    return [for (final x in (m['done'] as List? ?? [])) '$x'];
+  }
+}
