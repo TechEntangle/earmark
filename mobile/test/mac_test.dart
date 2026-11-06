@@ -25,7 +25,8 @@ class FakeEngine {
 
   FakeEngine() {
     final base = Map<String, dynamic>.from((fx('sessions') as List).first as Map);
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final n = DateTime.now();
+    final now = DateTime(n.year, n.month, n.day, 12).millisecondsSinceEpoch ~/ 1000; // today at noon: stable goldens
     sessions = [
       {...base, 'started_at': now - 1800, 'ended_at': now - 1200},
       {...base, 'id': 2, 'title': 'Vendor call with Rahul', 'started_at': now - 7200, 'ended_at': now - 6000, 'duration_s': 1200,

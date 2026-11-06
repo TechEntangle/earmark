@@ -69,6 +69,22 @@ class ConfigStore {
   Future<void> savePendantPrefs(PendantPrefs p, {bool dirty = false}) =>
       _s.write(key: 'pendant_prefs', value: jsonEncode({...p.toJson(), 'dirty': dirty}));
 
+  /// Who writes notes and answers Ask: apple | openai | anthropic.
+  Future<String?> aiProvider() => _s.read(key: 'ai_provider');
+  Future<void> saveAiProvider(String p) => _s.write(key: 'ai_provider', value: p);
+  Future<String> aiKey(String provider) async => await _s.read(key: 'ai_key_$provider') ?? '';
+  Future<void> saveAiKey(String provider, String key) => _s.write(key: 'ai_key_$provider', value: key);
+  Future<String> aiModel(String provider) async => await _s.read(key: 'ai_model_$provider') ?? '';
+  Future<void> saveAiModel(String provider, String model) => _s.write(key: 'ai_model_$provider', value: model);
+
+  /// A silence this long starts a new conversation (seconds); null = your Mac's setting.
+  Future<int?> gapSeconds() async => int.tryParse(await _s.read(key: 'gap_seconds') ?? '');
+  Future<void> saveGapSeconds(int? s) => s == null ? _s.delete(key: 'gap_seconds') : _s.write(key: 'gap_seconds', value: '$s');
+
+  /// Days of audio kept on the phone for playing back.
+  Future<int> keepDays() async => int.tryParse(await _s.read(key: 'keep_days') ?? '') ?? 30;
+  Future<void> saveKeepDays(int d) => _s.write(key: 'keep_days', value: '$d');
+
   Future<bool> paused() async => (await _s.read(key: 'paused')) == '1';
   Future<void> savePaused(bool p) => _s.write(key: 'paused', value: p ? '1' : '0');
 }

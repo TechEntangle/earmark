@@ -35,6 +35,24 @@ class FakeConfig extends ConfigStore {
   Future<DateTime?> lastHeld() async => m['held'] == null ? null : DateTime.parse(m['held']!);
   @override
   Future<void> saveLastHeld(DateTime t) async => m['held'] = t.toIso8601String();
+  @override
+  Future<String?> aiProvider() async => m['ai'];
+  @override
+  Future<void> saveAiProvider(String p) async => m['ai'] = p;
+  @override
+  Future<String> aiKey(String provider) async => m['key_$provider'] ?? '';
+  @override
+  Future<void> saveAiKey(String provider, String key) async => m['key_$provider'] = key;
+  @override
+  Future<String> aiModel(String provider) async => m['model_$provider'] ?? '';
+  @override
+  Future<void> saveAiModel(String provider, String model) async => m['model_$provider'] = model;
+  @override
+  Future<void> saveGapSeconds(int? s) async => m['gap'] = '$s';
+  @override
+  Future<void> saveKeepDays(int d) async => m['keep'] = '$d';
+  @override
+  Future<void> savePendantPrefs(PendantPrefs p, {bool dirty = false}) async {}
 }
 
 /// A pendant that is "connected" without Bluetooth.

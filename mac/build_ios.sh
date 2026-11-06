@@ -31,6 +31,12 @@ print(d[0]["id"] if d else "")')"
 elif [ "$what" = "mac" ]; then
   "$FLUTTER" build macos --release -t lib/mac/main_mac.dart 2>&1
   code=$?
+  if [ $code -eq 0 ]; then
+    # into ~/Applications (Launchpad, Spotlight); quit the running copy first
+    osascript -e 'tell application id "app.earmark.mac" to quit' >/dev/null 2>&1; sleep 1
+    rm -rf "$HOME/Applications/Earmark.app"
+    ditto build/macos/Build/Products/Release/Earmark.app "$HOME/Applications/Earmark.app" && echo "Installed to ~/Applications/Earmark.app"
+  fi
 else
   "$FLUTTER" build ios --release --no-codesign 2>&1
   code=$?

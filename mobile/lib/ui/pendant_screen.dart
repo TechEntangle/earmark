@@ -271,3 +271,11 @@ class _About extends StatelessWidget {
     return d.isNegative ? '$amount behind' : '$amount ahead';
   }
 }
+
+Widget pendantHint(BuildContext context, String a, String b) => Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 110, child: Text(a, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: context.t.ink))),
+        Expanded(child: Text(b, style: TextStyle(fontSize: 13.5, color: context.t.ink2))),
+      ]),
+    );

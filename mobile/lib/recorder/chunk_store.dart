@@ -34,18 +34,14 @@ class ChunkStore {
   int _lastFrameMicros = 0;
 
   /// Uploaded chunks are kept here for playing back (for [keepDays]), not deleted.
-  final int keepDays;
+  int keepDays;
   Directory get keptDir => Directory('${dir.path}/kept');
 
   ChunkStore(this.dir, {this.chunkSeconds = 30, int Function()? nowMicros, this.keepDays = 30})
       : nowMicros = nowMicros ?? (() => DateTime.now().microsecondsSinceEpoch) {
     dir.createSync(recursive: true);
     keptDir.createSync(recursive: true);
-    final cutoff = (this.nowMicros() - keepDays * 86400 * 1000000);
-    for (final f in keptDir.listSync().whereType<File>()) {
-      final start = int.tryParse(f.uri.pathSegments.last.split('_').last.split('.').first);
-      if (start != null && start < cutoff) f.deleteSync();
-    }
+    pruneKept();
     final saved = int.tryParse(_seqFile.existsSync() ? _seqFile.readAsStringSync().trim() : '');
     if (saved != null) _nextSeq = saved;
     for (final c in _list(includeOpen: true)) {
@@ -126,6 +122,18 @@ class ChunkStore {
     }
     return b / 70 * 0.02; // ~70 bytes per 20 ms frame incl. header
   }
+
+  /// Delete kept audio older than [keepDays].
+  void pruneKept() {
+    final cutoff = (nowMicros() - keepDays * 86400 * 1000000);
+    for (final f in keptDir.listSync().whereType<File>()) {
+      final start = int.tryParse(f.uri.pathSegments.last.split('_').last.split('.').first);
+      if (start != null && start < cutoff) f.deleteSync();
+    }
+  }
+
+  /// Bytes of audio kept for playing back.
+  int keptBytes() => keptDir.listSync().whereType<File>().fold(0, (a, f) => a + f.lengthSync());
 
   /// The Mac has it: keep it on the phone for playing back (until [keepDays]).
   void markUploaded(Chunk c) {

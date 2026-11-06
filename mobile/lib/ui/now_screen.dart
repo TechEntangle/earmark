@@ -5,8 +5,10 @@ import 'package:intl/intl.dart';
 
 import '../app_controller.dart';
 import '../pendant/pendant_service.dart';
+import '../pendant/prefs.dart';
 import 'heard_screen.dart';
 import 'lists.dart';
+import 'pendant_screen.dart';
 import 'phone_lists.dart';
 import 'settings_screen.dart';
 import 'theme.dart';
@@ -448,8 +450,9 @@ class _Details extends StatelessWidget {
                   childrenPadding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                   title: const Text('Pendant buttons', style: TextStyle(fontSize: 15)),
                   children: [
-                    pendantHint(context, 'Single tap', 'Earmark this moment, then say "remind me to…"'),
-                    pendantHint(context, 'Double tap', 'Pause or resume'),
+                    for (final (g, a) in [('Single tap', c.prefs.tap), ('Double tap', c.prefs.doubleTap), ('Press and hold', c.prefs.hold)])
+                      if (a != ButtonAction.none)
+                        pendantHint(context, g, a == ButtonAction.earmark ? 'Earmark this moment, then say "remind me to…"' : 'Pause or resume'),
                     pendantHint(context, 'Hold 3 s', 'Power off'),
                     pendantHint(context, 'Vibrations', 'three short = recording, one long = paused, one medium = earmarked'),
                   ],

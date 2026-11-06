@@ -19,6 +19,7 @@ import 'pendant/prefs.dart';
 import 'pendant/protocol.dart';
 import 'recorder/chunk_store.dart';
 import 'ask/ask_index.dart';
+import 'notes/cloud.dart';
 import 'notes/conversations.dart';
 import 'notes/due.dart';
 import 'notes/voices.dart';
@@ -92,7 +93,68 @@ class EarmarkController extends ChangeNotifier {
   bool _writingNotes = false;
   final List<double> earmarks = []; // epoch seconds, kept with what was heard
   File? _earmarksFile;
-  bool get notesOn => asrOn && notesState == 'available';
+  bool get notesOn => asrOn && (ai.cloud ? (aiKeys[ai.name] ?? '').isNotEmpty : notesState == 'available');
+
+  /// Who writes notes and answers Ask: Apple's on-device model, or your own OpenAI / Anthropic key.
+  AiProvider ai = AiProvider.apple;
+  final Map<String, String> aiKeys = {}, aiModels = {};
+  /// your own silence length for a new conversation (seconds); null = your Mac's
+  int? gapOverride;
+  double get gapSeconds => (gapOverride ?? (macSettings['session_gap_seconds'] as num?) ?? 90).toDouble();
+
+  CloudModel? get cloud => ai.cloud && (aiKeys[ai.name] ?? '').isNotEmpty
+      ? CloudModel(ai, aiKeys[ai.name]!, model: aiModels[ai.name])
+      : null;
+
+  Future<void> setAi(AiProvider p) async {
+    ai = p;
+    notifyListeners();
+    try {
+      await config.saveAiProvider(p.name);
+    } catch (_) {}
+    _retryFailedNotes();
+  }
+
+  /// Conversations whose notes failed (no model, a bad key) get another go.
+  void _retryFailedNotes() {
+    for (final v in convs?.all ?? const <Conversation>[]) {
+      if (v.status == 'failed') {
+        v.status = 'pending';
+        v.attempts = 0;
+        v.error = null;
+      }
+    }
+    convs?.save();
+  }
+
+  Future<void> setAiKey(AiProvider p, String key, {String? model}) async {
+    aiKeys[p.name] = key.trim();
+    if (model != null) aiModels[p.name] = model.trim();
+    notifyListeners();
+    try {
+      await config.saveAiKey(p.name, key.trim());
+      if (model != null) await config.saveAiModel(p.name, model.trim());
+    } catch (_) {}
+    if (p == ai) _retryFailedNotes();
+  }
+
+  Future<void> setGap(int? seconds) async {
+    gapOverride = seconds;
+    notifyListeners();
+    try {
+      await config.saveGapSeconds(seconds);
+    } catch (_) {}
+  }
+
+  int get keepDays => store?.keepDays ?? 30;
+  Future<void> setKeepDays(int d) async {
+    store?.keepDays = d;
+    store?.pruneKept();
+    notifyListeners();
+    try {
+      await config.saveKeepDays(d);
+    } catch (_) {}
+  }
 
   Pairing? pairing;
   Api? api;
@@ -234,7 +296,7 @@ class EarmarkController extends ChangeNotifier {
   // ------------------------------------------------------------ lifecycle
   Future<void> init() async {
     final docs = await getApplicationSupportDirectory();
-    store = ChunkStore(Directory('${docs.path}/recordings'));
+    store = ChunkStore(Directory('${docs.path}/recordings'), keepDays: await config.keepDays());
     _eventsFile = File('${docs.path}/pending_events.json');
     _ringDir = Directory('${docs.path}/from_pendant_memory')..createSync(recursive: true);
     if (_eventsFile!.existsSync()) {
@@ -254,6 +316,12 @@ class EarmarkController extends ChangeNotifier {
     } catch (_) {}
     transcribeHere = await config.transcribeHere();
     remindersOn = await config.reminders();
+    ai = AiProvider.parse(await config.aiProvider());
+    for (final p in AiProvider.values.where((p) => p.cloud)) {
+      aiKeys[p.name] = await config.aiKey(p.name);
+      aiModels[p.name] = await config.aiModel(p.name);
+    }
+    gapOverride = await config.gapSeconds();
     final (savedPrefs, prefsDirty) = await config.pendantPrefs();
     prefs = savedPrefs;
     _prefsDirty = prefsDirty;
@@ -390,7 +458,7 @@ class EarmarkController extends ChangeNotifier {
   Future<void> processConversations({DateTime? now}) async {
     final cs = convs, h = heard;
     if (cs == null || h == null || !asrOn) return;
-    final gap = (macSettings['session_gap_seconds'] as num?)?.toDouble() ?? 90;
+    final gap = gapSeconds;
     if (cs.sync(h, gap: gap, now: (now ?? DateTime.now()).millisecondsSinceEpoch / 1000)) {
       cs.save();
       notifyListeners();
@@ -425,7 +493,9 @@ class EarmarkController extends ChangeNotifier {
       final when = next.startTime;
       final header = 'The recording started ${_weekday(when)} ${when.day}/${when.month}/${when.year} at '
           '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}.';
-      final n = await asrEngine.notes(Conversations.promptLines(next, h, earmarks), header: header);
+      final lines = Conversations.promptLines(next, h, earmarks);
+      final model = cloud;
+      final n = model != null ? await model.notes(lines, header: header) : await asrEngine.notes(lines, header: header);
       Conversations.applyNotes(next, n);
     } on NotesError catch (e) {
       if (!e.retryLater) {
@@ -712,7 +782,8 @@ class EarmarkController extends ChangeNotifier {
     ];
     try {
       final now = DateTime.now();
-      final (text, used) = await asrEngine.answer(question, excerpts,
+      final model = cloud;
+      final (text, used) = await (model != null ? model.answer : asrEngine.answer)(question, excerpts,
           today: '${_weekday(now)} ${now.day}/${now.month}/${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
       return AskAnswer(question, text, hits, used);
     } on NotesError catch (e) {
@@ -768,7 +839,7 @@ class EarmarkController extends ChangeNotifier {
           }
           h.replace(ch.withMacText(mine.map((g) => '${g['text']}').join(' '), words));
         }
-        cs.sync(h, gap: (macSettings['session_gap_seconds'] as num?)?.toDouble() ?? 90, now: t.millisecondsSinceEpoch / 1000);
+        cs.sync(h, gap: gapSeconds, now: t.millisecondsSinceEpoch / 1000);
         final after = cs.byId(v.id);
         if (after != null && !Conversations.awaitingMac(after, h)) {
           if (after.status == 'ready' || after.status == 'failed') after.status = 'pending'; // notes again, with the translation

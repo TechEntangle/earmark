@@ -455,7 +455,9 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
 }
 
 /// Why notes aren't being written on the phone.
-String notesHint(EarmarkController c) => switch (c.notesState) {
+String notesHint(EarmarkController c) => c.ai.cloud
+    ? 'Add your ${c.ai.label} key in Settings → Notes, tasks and Ask.'
+    : switch (c.notesState) {
       'notEnabled' => 'Turn on Apple Intelligence (Settings → Apple Intelligence & Siri) for notes and tasks on the iPhone.',
       'notReady' => "Apple Intelligence is still getting ready on this iPhone. Notes follow when it's done.",
       'notEligible' => "This iPhone can't run Apple's on-device model. Your Mac writes the notes.",
