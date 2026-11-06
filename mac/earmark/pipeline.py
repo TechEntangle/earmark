@@ -574,6 +574,25 @@ def _detect(window, model_size: str = "base"):
     return lang, prob
 
 
+def other_language(wav_path: Path, detector: str = "base", min_prob: float = 0.6) -> Optional[str]:
+    """The first non-English language confidently heard in a recording, or None if it is all English.
+    The iPhone transcribes English only; recordings in other languages are transcribed (and translated)
+    by the Mac instead."""
+    import numpy as np
+    if os.environ.get("EARMARK_FAKE_TRANSCRIBE") == "1":       # end-to-end tests only
+        return os.environ.get("EARMARK_FAKE_LANGUAGE") or None
+    for _off, audio in _wav_blocks(wav_path):
+        chunks = _speech_chunks(audio)
+        for w in _windows(chunks):
+            win = np.concatenate([audio[c["start"]:c["end"]] for c in w])
+            if len(win) < 2 * SAMPLE_RATE:
+                continue
+            lang, prob = _detect(win[:30 * SAMPLE_RATE], detector)
+            if lang != "en" and prob >= min_prob:
+                return lang
+    return None
+
+
 def _windows(chunks: list, max_s: float = 30.0, max_gap_s: float = 3.0) -> list:
     """Group VAD chunks into windows of nearby speech, up to max_s of speech each."""
     out, cur, cur_len = [], [], 0

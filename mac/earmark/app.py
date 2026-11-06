@@ -680,6 +680,13 @@ async def process_queue(cfg: dict):
 
             S.proc_label = label
             tr = _phone_transcript(row) if row["source"] == "phone" else None
+            if tr is not None and cfg["engine"] == "auto":
+                # the iPhone hears English only: Hindi, Urdu, Marathi and the rest are the Mac's (with translation)
+                other = await loop.run_in_executor(
+                    MLX, lambda: PL.other_language(Path(row["wav_path"])))
+                if other:
+                    S.say(f"{label}: {PL.LANG_NAMES.get(other, other)} heard, so the Mac transcribes it instead of the iPhone")
+                    tr = None
             if tr is None:                       # the phone had no text for it: the Mac is the backup
                 try:
                     tr = await loop.run_in_executor(MLX, lambda: PL.transcribe(
