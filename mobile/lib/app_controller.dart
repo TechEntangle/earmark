@@ -27,6 +27,7 @@ class LocalAsr {
   Future<void> prepare() => EarmarkAsr.prepare();
   Future<AsrResult> transcribe(String path, {String? prev}) => EarmarkAsr.transcribe(path, prev: prev);
   Future<void> deleteModels() => EarmarkAsr.deleteModels();
+  Future<void> prepareLanguages() => EarmarkAsr.prepareLanguages();
   Future<String> notesAvailability() => EarmarkNotes.availability();
   Future<Map<String, dynamic>> notes(List<String> lines, {String header = ''}) => EarmarkNotes.notes(lines, header: header);
 }
@@ -229,6 +230,7 @@ class EarmarkController extends ChangeNotifier {
     if (pairing != null) await startHolding();
     _beat = Timer.periodic(const Duration(seconds: 30), (_) => heartbeat());
     _pump = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (asrOn && asr.ready && (asr.languages?.busy ?? false)) await _refreshAsr(); // Whisper downloading
       await transcribePending();
       await processConversations();
       await pumpUploads();
@@ -266,6 +268,17 @@ class EarmarkController extends ChangeNotifier {
     }
   }
 
+  /// Try Whisper (Hindi, Marathi, Urdu and the rest) again after it failed.
+  Future<void> retryLanguages() async {
+    asr = AsrStatus(asr.state, progress: asr.progress, onDisk: asr.onDisk, error: asr.error,
+        languages: const AsrStatus('downloading'));
+    notifyListeners();
+    try {
+      await asrEngine.prepareLanguages();
+    } catch (_) {}
+    await _refreshAsr();
+  }
+
   Future<void> _refreshAsr() async {
     try {
       asr = await asrEngine.status();
@@ -285,7 +298,8 @@ class EarmarkController extends ChangeNotifier {
         final prev = _asrPrev(c);
         try {
           final r = await asrEngine.transcribe(c.file.path, prev: prev?.path);
-          h.add(HeardChunk(c.seq, c.startSeconds, r.seconds, r.text, [for (final w in r.words) w.toJson()]));
+          h.add(HeardChunk(c.seq, c.startSeconds, r.seconds, r.text, [for (final w in r.words) w.toJson()],
+              lang: r.language, checked: r.checked));
           _keepAsPrev(c);
           notifyListeners();
         } catch (e) {
@@ -653,7 +667,8 @@ class EarmarkController extends ChangeNotifier {
         final text = heard?.bySeq(c.seq);
         if (text != null && text.seconds > 0 && !_textSent.contains(c.seq)) {
           try {
-            await a.uploadTranscript(seq: c.seq, start: c.startSeconds, seconds: text.seconds, text: text.text, words: text.words);
+            await a.uploadTranscript(seq: c.seq, start: c.startSeconds, seconds: text.seconds, text: text.text, words: text.words,
+                language: text.lang, checked: text.checked);
           } on ApiError catch (e) {
             if (e.status != 404) rethrow; // an older Mac without this endpoint transcribes by itself
           }

@@ -74,6 +74,22 @@ class SettingsScreen extends StatelessWidget {
                         ? TextButton(onPressed: c.prepareAsr, child: const Text('Get it'))
                         : null,
                   ),
+                  if (c.asr.ready) ...[
+                    const Divider(),
+                    ListTile(
+                      title: const Text('Other languages'),
+                      subtitle: Text(switch (c.asr.languages?.state) {
+                        'ready' => 'Ready · Whisper large-v3: Hindi, Marathi, Urdu and more, translated into English',
+                        'downloading' => 'Downloading · ${((c.asr.languages?.progress ?? 0) * 100).round()}%',
+                        'loading' => 'Loading…',
+                        'error' => "Didn't load: ${c.asr.languages?.error ?? ''}",
+                        _ => 'Not downloaded yet',
+                      }, style: tt.bodySmall),
+                      trailing: c.asr.languages?.state == 'error'
+                          ? TextButton(onPressed: c.retryLanguages, child: const Text('Try again'))
+                          : null,
+                    ),
+                  ],
                 ],
               ]),
             ),

@@ -9,7 +9,9 @@ class AsrStatus {
   final double progress;
   final bool onDisk;
   final String? error;
-  const AsrStatus(this.state, {this.progress = 0, this.onDisk = false, this.error});
+  /// Whisper, for languages other than English (null when unknown).
+  final AsrStatus? languages;
+  const AsrStatus(this.state, {this.progress = 0, this.onDisk = false, this.error, this.languages});
   bool get ready => state == 'ready';
   bool get busy => state == 'downloading' || state == 'loading';
   static const unsupported = AsrStatus('unsupported');
@@ -26,7 +28,13 @@ class AsrResult {
   final String text;
   final List<AsrWord> words;
   final double seconds;
-  const AsrResult(this.text, this.words, this.seconds);
+  /// "en", another language code (translated into English), or "" (not checked / silence)
+  final String language;
+  /// parakeet | whisper
+  final String engine;
+  /// whether the language was checked (Whisper was ready)
+  final bool checked;
+  const AsrResult(this.text, this.words, this.seconds, {this.language = '', this.engine = 'parakeet', this.checked = false});
 }
 
 class EarmarkAsr {
@@ -39,12 +47,20 @@ class EarmarkAsr {
     if (!supported) return AsrStatus.unsupported;
     try {
       final m = Map<String, dynamic>.from(await _ch.invokeMethod('status') as Map);
-      return AsrStatus('${m['state']}',
-          progress: (m['progress'] as num?)?.toDouble() ?? 0, onDisk: m['onDisk'] == true, error: m['error'] as String?);
+      return _parse(m);
     } on MissingPluginException {
       return AsrStatus.unsupported;
     }
   }
+
+  static AsrStatus _parse(Map m) => AsrStatus('${m['state']}',
+      progress: (m['progress'] as num?)?.toDouble() ?? 0,
+      onDisk: m['onDisk'] == true,
+      error: m['error'] as String?,
+      languages: m['languages'] is Map ? _parse(m['languages'] as Map) : null);
+
+  /// Get Whisper (other languages) again after it failed.
+  static Future<void> prepareLanguages() => _ch.invokeMethod('prepareLanguages');
 
   /// Download (once) and load the model. Completes when it is ready.
   static Future<void> prepare() => _ch.invokeMethod('prepare');
@@ -56,7 +72,8 @@ class EarmarkAsr {
       for (final w in (m['words'] as List? ?? []))
         AsrWord((w[0] as num).toDouble(), (w[1] as num).toDouble(), '${w[2]}'),
     ];
-    return AsrResult('${m['text'] ?? ''}'.trim(), words, (m['seconds'] as num?)?.toDouble() ?? 0);
+    return AsrResult('${m['text'] ?? ''}'.trim(), words, (m['seconds'] as num?)?.toDouble() ?? 0,
+        language: '${m['language'] ?? ''}', engine: '${m['engine'] ?? 'parakeet'}', checked: m['checked'] == true);
   }
 
   static Future<void> unload() => _ch.invokeMethod('unload');

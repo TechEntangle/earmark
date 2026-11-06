@@ -73,5 +73,13 @@ def transcript(chunks: list[dict], started_at: float, ended_at: float) -> Option
     if not chunks or not covered(chunks, started_at, ended_at):
         return None
     segs = segments_from_chunks(chunks, started_at)
-    return {"language": "en", "languages": ["en"], "segments": segs, "text": "\n".join(s["text"] for s in segs),
-            "engine": "iphone"}
+    # the phone checked each chunk's language (English by Parakeet, others translated into English by Whisper)
+    checked = all(ch.get("engine") == "iphone-multi" for ch in chunks)
+    langs = []
+    for ch in chunks:
+        lang = ch.get("language") or ""
+        if lang and lang not in langs:
+            langs.append(lang)
+    langs = langs or ["en"]
+    return {"language": ", ".join(langs), "languages": langs, "segments": segs, "text": "\n".join(s["text"] for s in segs),
+            "engine": "iphone", "checked": checked}

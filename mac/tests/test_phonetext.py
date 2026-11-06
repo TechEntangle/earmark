@@ -33,3 +33,13 @@ def test_phone_text_stands_only_when_it_covers_the_session():
 def test_chunk_without_word_timings_is_spread_evenly():
     segs = PT.segments_from_chunks([{"start": 10.0, "seconds": 4, "text": "one two three four", "words": []}], 10.0)
     assert segs[0]["text"] == "one two three four" and segs[0]["words"][3] == [3.0, 4.0, "four"]
+
+
+def test_languages_checked_on_the_phone_are_trusted():
+    t0 = 3_000_000.0
+    a = dict(_chunk(t0, 30, [[1, 2, "Hello."]]), engine="iphone-multi", language="en")
+    b = dict(_chunk(t0 + 30, 30, [[1, 2, "Translated."]]), engine="iphone-multi", language="hi")
+    tr = PT.transcript([a, b], t0, t0 + 60)
+    assert tr["checked"] and tr["languages"] == ["en", "hi"] and tr["language"] == "en, hi"
+    old = dict(_chunk(t0 + 30, 30, [[1, 2, "Garbled."]]), engine="parakeet-v2-coreml", language="")
+    assert not PT.transcript([a, old], t0, t0 + 60)["checked"], "an older phone: the Mac checks the language"

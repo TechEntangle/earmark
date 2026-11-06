@@ -24,7 +24,9 @@ class FakeAsr extends LocalAsr {
   Future<AsrResult> transcribe(String path, {String? prev}) async {
     calls.add((path, prev));
     final n = calls.length;
-    return AsrResult('words of chunk $n', [AsrWord(0.1, 0.4, 'words'), AsrWord(0.5, 0.7, 'of')], 30);
+    return n == 2
+        ? AsrResult('words of chunk $n', [AsrWord(0.1, 0.4, 'words')], 30, language: 'hi', engine: 'whisper', checked: true)
+        : AsrResult('words of chunk $n', [AsrWord(0.1, 0.4, 'words'), AsrWord(0.5, 0.7, 'of')], 30);
   }
 }
 
@@ -64,7 +66,7 @@ void main() {
     c.api = Api(Uri.parse('https://mac.test'), 'tok', client: MockClient((r) async {
       if (r.url.path == '/api/app/transcript') {
         final b = jsonDecode(r.body) as Map;
-        sent.add('text ${b['seq']}: ${b['text']}');
+        sent.add('text ${b['seq']}: ${b['text']} [${b['language']} ${b['engine']}]');
       } else if (r.url.path == '/api/app/audio') {
         sent.add('audio ${r.headers['x-earmark-seq']}');
       }
@@ -93,7 +95,11 @@ void main() {
     expect(c.heard!.has(1) && c.heard!.has(2), isTrue);
 
     await c.pumpUploads();
-    expect(sent, ['text 1: words of chunk 1', 'audio 1', 'text 2: words of chunk 2', 'audio 2']);
+    expect(sent, [
+      'text 1: words of chunk 1 [ parakeet-v2-coreml]', 'audio 1',
+      'text 2: words of chunk 2 [hi iphone-multi]', 'audio 2', // Hindi, translated on the phone: the Mac can use it
+    ]);
+    expect(Heard(Directory('${dir.path}/heard')).bySeq(2)!.translated, isTrue, reason: 'kept with the transcript');
     expect(c.store!.pending(), isEmpty);
     expect(c.heard!.latest()!.text, 'words of chunk 1 words of chunk 2', reason: 'kept on the phone after sending');
   });

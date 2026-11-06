@@ -9,18 +9,26 @@ class HeardChunk {
   final double seconds;
   final String text;
   final List<List<Object>> words; // [start, end, word], seconds from [start]
-  const HeardChunk(this.seq, this.start, this.seconds, this.text, this.words);
+  /// "en", another language (the text is its English translation), or "" (unknown)
+  final String lang;
+  /// whether the language was checked on the phone
+  final bool checked;
+  const HeardChunk(this.seq, this.start, this.seconds, this.text, this.words, {this.lang = '', this.checked = false});
+
+  bool get translated => lang.isNotEmpty && lang != 'en';
 
   double get end => start + seconds;
   DateTime get startTime => DateTime.fromMillisecondsSinceEpoch((start * 1000).round());
   DateTime get endTime => DateTime.fromMillisecondsSinceEpoch((end * 1000).round());
 
-  Map<String, Object> toJson() => {'seq': seq, 'start': start, 'seconds': seconds, 'text': text, 'words': words};
+  Map<String, Object> toJson() =>
+      {'seq': seq, 'start': start, 'seconds': seconds, 'text': text, 'words': words, 'lang': lang, 'checked': checked};
   static HeardChunk? fromJson(Map m) {
     final seq = m['seq'], start = m['start'];
     if (seq is! int || start is! num) return null;
     return HeardChunk(seq, start.toDouble(), (m['seconds'] as num?)?.toDouble() ?? 0, '${m['text'] ?? ''}',
-        [for (final w in (m['words'] as List? ?? [])) if (w is List && w.length == 3) [w[0] as Object, w[1] as Object, '${w[2]}']]);
+        [for (final w in (m['words'] as List? ?? [])) if (w is List && w.length == 3) [w[0] as Object, w[1] as Object, '${w[2]}']],
+        lang: '${m['lang'] ?? ''}', checked: m['checked'] == true);
   }
 }
 

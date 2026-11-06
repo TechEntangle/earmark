@@ -70,6 +70,13 @@ class Conversation {
   }
 }
 
+const languageNames = {
+  'hi': 'Hindi', 'mr': 'Marathi', 'ur': 'Urdu', 'gu': 'Gujarati', 'bn': 'Bengali', 'ta': 'Tamil', 'te': 'Telugu',
+  'kn': 'Kannada', 'ml': 'Malayalam', 'pa': 'Punjabi', 'ar': 'Arabic', 'fa': 'Persian', 'de': 'German', 'fr': 'French',
+  'es': 'Spanish', 'it': 'Italian', 'ru': 'Russian', 'zh': 'Chinese', 'ja': 'Japanese', 'ko': 'Korean', 'tr': 'Turkish',
+  'pt': 'Portuguese', 'nl': 'Dutch', 'ne': 'Nepali', 'si': 'Sinhala',
+};
+
 /// Spoken requests to Earmark itself ("remind me to…", "add a task…"), as on the Mac.
 final commandPattern = RegExp(
     r"\b(remind me|set (a|me a) reminder|create (a |an )?(task|reminder|to-?do)|make (a |an )?(task|reminder|to-?do|note)|"
@@ -207,6 +214,18 @@ class Conversations {
   static String clockText(double s) {
     final t = s.round();
     return '${(t ~/ 60).toString().padLeft(2, '0')}:${(t % 60).toString().padLeft(2, '0')}';
+  }
+
+  /// Languages translated into English in this conversation (names, e.g. "Hindi").
+  static List<String> translatedFrom(Conversation c, Heard heard) {
+    final out = <String>[];
+    for (final seq in c.seqs) {
+      final ch = heard.bySeq(seq);
+      if (ch == null || !ch.translated) continue;
+      final name = languageNames[ch.lang] ?? ch.lang;
+      if (!out.contains(name)) out.add(name);
+    }
+    return out;
   }
 
   /// What the on-device model reads: "[mm:ss] text", ◆ for spoken requests, ★ near an earmark.

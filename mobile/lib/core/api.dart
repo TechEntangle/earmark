@@ -106,9 +106,14 @@ class Api {
   }
 
   /// This phone's transcript of one chunk (sent just before the chunk's audio).
+  /// [checked]: the phone checked the language (English by Parakeet, other languages translated by
+  /// Whisper), so the Mac can use the text as it is.
   Future<void> uploadTranscript({required int seq, required double start, required double seconds, required String text,
-          required List<List<Object>> words}) =>
-      post('/api/app/transcript', {'seq': seq, 'start': start, 'seconds': seconds, 'text': text, 'words': words, 'engine': 'parakeet-v2-coreml'});
+          required List<List<Object>> words, String language = '', bool checked = false}) =>
+      post('/api/app/transcript', {
+        'seq': seq, 'start': start, 'seconds': seconds, 'text': text, 'words': words, 'language': language,
+        'engine': checked ? 'iphone-multi' : 'parakeet-v2-coreml',
+      });
 
   Future<void> event(String type, {DateTime? at}) => post('/api/app/event',
       {'type': type, 'at': (at ?? DateTime.now()).millisecondsSinceEpoch / 1000});

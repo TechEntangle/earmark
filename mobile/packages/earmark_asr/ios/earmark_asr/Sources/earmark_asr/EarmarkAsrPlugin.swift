@@ -5,8 +5,10 @@
 //     → text + word timings (seconds from the start of the chunk)
 //
 // Channel "earmark/asr":
-//   status        → {state: idle|downloading|loading|ready|error, progress: 0…1, onDisk: Bool, error?}
-//   prepare       → downloads the model once (~480 MB, from Hugging Face) and loads it
+//   status        → {state: idle|downloading|loading|ready|error, progress: 0…1, onDisk: Bool, error?,
+//                    languages: {state, progress, onDisk, error?}}   (Whisper, for languages other than English)
+//   prepare       → downloads Parakeet once (~480 MB) and loads it, then Whisper (~950 MB) in the background
+//   transcribe    → also {language, engine: parakeet|whisper, checked}: whether the language was checked
 //   transcribe    {path, prev?} → {text, words: [[start, end, word]], seconds}
 //                 prev = the chunk just before, if the audio runs on: its last 2 s are used as
 //                 context so a word cut at the boundary is heard whole, then dropped from the result.
@@ -41,6 +43,13 @@ public final class EarmarkAsrPlugin: NSObject, FlutterPlugin {
             Task {
                 do {
                     try await engine.prepare()
+                    reply(nil)
+                } catch { fail(error) }
+            }
+        case "prepareLanguages":
+            Task {
+                do {
+                    try await engine.prepareLanguages()
                     reply(nil)
                 } catch { fail(error) }
             }
@@ -87,24 +96,43 @@ enum EarmarkAsrError: LocalizedError {
 
 actor AsrEngine {
     private let version: AsrModelVersion = .v2   // English, the most accurate for English
+    private let whisper = WhisperEngine()
+    private var whisperStarted = false
     private var manager: AsrManager?
     private var loading: Task<AsrManager, Error>?
     private var state = "idle"
     private var progress = 0.0
     private var lastError: String?
 
-    func status() -> [String: Any] {
+    func status() async -> [String: Any] {
         var s: [String: Any] = [
             "state": manager != nil ? "ready" : state,
             "progress": progress,
             "onDisk": AsrModels.modelsExist(at: AsrModels.defaultCacheDirectory(for: version), version: version),
         ]
         if let e = lastError { s["error"] = e }
+        s["languages"] = await whisper.status()
         return s
     }
 
     func prepare() async throws {
         _ = try await ready()
+        startWhisper()
+    }
+
+    /// Whisper loads after Parakeet, in the background: English works meanwhile.
+    private func startWhisper() {
+        if whisperStarted { return }
+        whisperStarted = true
+        let w = whisper
+        Task.detached(priority: .utility) {
+            try? await w.prepare()
+        }
+    }
+
+    func prepareLanguages() async throws {
+        whisperStarted = true
+        try await whisper.prepare()
     }
 
     private func ready() async throws -> AsrManager {
@@ -172,6 +200,7 @@ actor AsrEngine {
 
     func transcribe(path: String, prev: String?) async throws -> [String: Any] {
         let m = try await ready()
+        startWhisper()
         let main = try OpusChunk.decode(path: path)
         var lead: [Float] = []
         if let prev, let p = try? OpusChunk.decode(path: prev) {
@@ -179,14 +208,27 @@ actor AsrEngine {
         }
         let seconds = Double(main.count) / Double(OpusChunk.sampleRate)
         if main.count < OpusChunk.sampleRate / 4 {
-            return ["text": "", "words": [[Any]](), "seconds": seconds]
+            return ["text": "", "words": [[Any]](), "seconds": seconds, "language": "", "engine": "parakeet", "checked": true]
         }
         var (text, words) = try await run(m, lead: lead, main: main)
         if words.isEmpty && !lead.isEmpty && !text.isEmpty {
             // no timings to tell the context apart from the chunk: transcribe the chunk alone
             (text, words) = try await run(m, lead: [], main: main)
         }
-        return ["text": text, "words": words, "seconds": seconds]
+        // Nothing heard: no need to ask Whisper (it imagines words in silence)
+        if text.isEmpty {
+            return ["text": "", "words": [[Any]](), "seconds": seconds, "language": "", "engine": "parakeet", "checked": true]
+        }
+        guard await whisper.ready else {
+            // Whisper isn't ready yet: English text, language unchecked (the Mac checks it)
+            return ["text": text, "words": words, "seconds": seconds, "language": "", "engine": "parakeet", "checked": false]
+        }
+        let (lang, prob) = try await whisper.detect(main)
+        if lang == "en" || prob < 0.6 {
+            return ["text": text, "words": words, "seconds": seconds, "language": "en", "engine": "parakeet", "checked": true]
+        }
+        let (wText, wWords) = try await whisper.translate(main, language: lang)
+        return ["text": wText, "words": wWords, "seconds": seconds, "language": lang, "engine": "whisper", "checked": true]
     }
 
     private func run(_ m: AsrManager, lead: [Float], main: [Float]) async throws -> (String, [[Any]]) {

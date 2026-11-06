@@ -157,10 +157,12 @@ class PhoneConversationScreen extends StatelessWidget {
             if (v == null || h == null) return const Center(child: Text('This conversation is no longer on the phone.'));
             final t = context.t, tt = Theme.of(context).textTheme;
             final lines = Conversations.lines(v, h);
+            final from = Conversations.translatedFrom(v, h);
             return ListView(padding: const EdgeInsets.fromLTRB(20, 0, 20, 32), children: [
               Text(convTitle(c, v), style: tt.headlineMedium),
               const SizedBox(height: 6),
-              Text('${DateFormat('EEE d MMM, HH:mm').format(v.startTime)}  ·  ${dur(v.seconds)}  ·  On iPhone', style: tt.bodySmall),
+              Text('${DateFormat('EEE d MMM, HH:mm').format(v.startTime)}  ·  ${dur(v.seconds)}  ·  On iPhone'
+                  '${from.isEmpty ? '' : '  ·  Translated from ${from.join(', ')}'}', style: tt.bodySmall),
               const SizedBox(height: 16),
               if (v.status == 'ready') ...[
                 if ((v.summary ?? '').isNotEmpty)

@@ -43,8 +43,41 @@ class HeardCard extends StatelessWidget {
         Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: c.prepareAsr, child: const Text('Try again'))),
       ]);
     }
+    final langs = a.languages;
+    Widget? extra;
+    if (langs != null && langs.busy) {
+      final pct = (langs.progress * 100).clamp(0, 100).round();
+      extra = _panel(context, key: const Key('langPreparing'), children: [
+        Text(langs.state == 'loading' || langs.onDisk
+            ? 'Loading the model for other languages…'
+            : 'Getting the model for Hindi, Marathi, Urdu… · ${pct > 0 ? '$pct%' : 'starting'}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(value: langs.state == 'downloading' && langs.progress > 0 ? langs.progress : null,
+              minHeight: 3, color: t.live, backgroundColor: t.line),
+        ),
+        const SizedBox(height: 6),
+        Text('About 950 MB, once. English works meanwhile; other languages go to your Mac until it is ready.',
+            style: TextStyle(fontSize: 12.5, color: t.ink2)),
+      ]);
+    } else if (langs != null && langs.state == 'error') {
+      extra = _panel(context, key: const Key('langError'), children: [
+        Text("The model for other languages didn't load", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.due)),
+        Text('${langs.error ?? ''} Your Mac handles them meanwhile.', maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12.5, color: t.ink2)),
+        Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: c.retryLanguages, child: const Text('Try again'))),
+      ]);
+    }
     final s = c.heard?.latest();
-    if (s == null) return const SizedBox.shrink();
+    if (s == null) return extra ?? const SizedBox.shrink();
+    final card = _heard(context, s);
+    return extra == null ? card : Column(children: [extra, const SizedBox(height: 10), card]);
+  }
+
+  Widget _heard(BuildContext context, Stretch s) {
+    final t = context.t;
     var text = s.text;
     if (text.length > 260) text = '…${text.substring(text.length - 260).replaceFirst(RegExp(r'^\S*\s'), '')}';
     return InkWell(

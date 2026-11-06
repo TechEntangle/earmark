@@ -212,6 +212,8 @@ def init_db():
             updated_at INTEGER
         );
         """)
+        if "language" not in {r[1] for r in c.execute("PRAGMA table_info(phone_text)")}:
+            c.execute("ALTER TABLE phone_text ADD COLUMN language TEXT")
         cols = {r[1] for r in c.execute("PRAGMA table_info(sessions)")}
         for col, ddl in (("notes_json", "TEXT"), ("kind", "TEXT"), ("intel_status", "TEXT"), ("intel_error", "TEXT"),
                          ("spk_status", "TEXT"), ("spk_json", "TEXT"), ("spk_error", "TEXT"), ("words_status", "TEXT"),
@@ -680,7 +682,7 @@ async def process_queue(cfg: dict):
 
             S.proc_label = label
             tr = _phone_transcript(row) if row["source"] == "phone" else None
-            if tr is not None and cfg["engine"] == "auto":
+            if tr is not None and cfg["engine"] == "auto" and not tr.get("checked"):
                 # the iPhone hears English only: Hindi, Urdu, Marathi and the rest are the Mac's (with translation)
                 other = await loop.run_in_executor(
                     MLX, lambda: PL.other_language(Path(row["wav_path"])))
@@ -1409,19 +1411,20 @@ def api_app_transcript(request: Request, body: dict):
     if not isinstance(words, list) or len(words) > 5000:
         raise HTTPException(400, "words must be a list")
     with db() as c:
-        c.execute("INSERT OR REPLACE INTO phone_text(device_id, seq, start, seconds, text, words_json, engine, created_at)"
-                  " VALUES(?,?,?,?,?,?,?,?)", (dev["id"], seq, start, secs, text, json.dumps(words),
-                                                str(body.get("engine") or "")[:40], int(time.time())))
+        c.execute("INSERT OR REPLACE INTO phone_text(device_id, seq, start, seconds, text, words_json, engine, language, created_at)"
+                  " VALUES(?,?,?,?,?,?,?,?,?)", (dev["id"], seq, start, secs, text, json.dumps(words),
+                                                  str(body.get("engine") or "")[:40], str(body.get("language") or "")[:12],
+                                                  int(time.time())))
     return {"ok": True}
 
 
 def _phone_transcript(row) -> Optional[dict]:
     """A session's transcript made on the iPhone, if the phone sent one for (nearly) all of it."""
     with db() as c:
-        rows = c.execute("SELECT start, seconds, text, words_json FROM phone_text WHERE start >= ? AND start < ?"
+        rows = c.execute("SELECT start, seconds, text, words_json, engine, language FROM phone_text WHERE start >= ? AND start < ?"
                          " ORDER BY start", (row["started_at"] - 2, row["ended_at"])).fetchall()
-    chunks = [{"start": r["start"], "seconds": r["seconds"], "text": r["text"],
-               "words": json.loads(r["words_json"] or "[]")} for r in rows]
+    chunks = [{"start": r["start"], "seconds": r["seconds"], "text": r["text"], "engine": r["engine"],
+               "language": r["language"], "words": json.loads(r["words_json"] or "[]")} for r in rows]
     return PT.transcript(chunks, float(row["started_at"]), float(row["ended_at"]))
 
 
