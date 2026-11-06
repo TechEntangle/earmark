@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'dart:convert';
+
 import 'package:earmark/app_controller.dart';
+import 'package:earmark/core/api.dart';
 import 'package:earmark/core/config.dart';
 import 'package:earmark/pendant/pendant_service.dart';
 import 'package:earmark/recorder/chunk_store.dart';
@@ -10,6 +13,8 @@ import 'package:earmark/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 /// Settings kept in memory instead of the Keychain.
 class FakeConfig extends ConfigStore {
@@ -87,8 +92,25 @@ void main() {
     t.view.devicePixelRatio = 3;
     final p = FakePendant();
     final c = controller(p)..link = Link.online;
+    final now = DateTime(2026, 11, 6, 11, 30).millisecondsSinceEpoch / 1000;
+    c.api = Api(Uri.parse('https://mac.tail1234.ts.net'), 'tok', client: MockClient((r) async {
+      if (r.url.path != '/api/sessions') return http.Response('{}', 404);
+      return http.Response(jsonEncode([
+        {'id': 3, 'started_at': now - 120, 'duration_s': 95, 'status': 'pending', 'source': 'phone'},
+        {'id': 2, 'started_at': now - 1500, 'duration_s': 342, 'status': 'done', 'title': 'Excel add-ins migration and patching plan',
+         'gist': 'Agreed to stage the add-in rollout behind the patch window and test on two desks first.', 'task_count': 4, 'speakers': ['Me', 'Sam']},
+        {'id': 1, 'started_at': now - 4000, 'duration_s': 600, 'status': 'done', 'title': 'Security incident response', 'task_count': 3},
+        {'id': 0, 'started_at': now - 9000, 'duration_s': 60, 'status': 'done', 'title': 'Older'},
+      ]), 200, headers: {'content-type': 'application/json'});
+    }));
     await p.start();
-    await t.pumpWidget(wrap(NowScreen(c: c), b: Brightness.dark));
+    await t.runAsync(() async {
+      await t.pumpWidget(wrap(NowScreen(c: c), b: Brightness.dark));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await t.pump();
+    expect(find.text('Excel add-ins migration and patching plan'), findsOneWidget);
+    expect(find.text('Older'), findsNothing, reason: 'only the latest three');
     expect(find.text('Recording'), findsOneWidget);
     expect(find.text('82%'), findsOneWidget);
     await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/now_recording_dark.png'));

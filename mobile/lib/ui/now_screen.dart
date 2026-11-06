@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../app_controller.dart';
 import '../pendant/pendant_service.dart';
+import 'lists.dart';
 import 'settings_screen.dart';
 import 'theme.dart';
 
@@ -18,6 +19,7 @@ class NowScreen extends StatefulWidget {
 
 class _NowScreenState extends State<NowScreen> {
   Timer? _tick;
+  int _gen = 0;
   @override
   void initState() {
     super.initState();
@@ -49,7 +51,10 @@ class _NowScreenState extends State<NowScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: c.heartbeat,
+        onRefresh: () async {
+          setState(() => _gen++);
+          await c.heartbeat();
+        },
         child: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
           Panel(
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
@@ -112,29 +117,18 @@ class _NowScreenState extends State<NowScreen> {
           const SizedBox(height: 14),
           _MacCard(c: c),
           const SizedBox(height: 14),
-          Panel(
-            color: t.sunk,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('On the pendant', style: tt.labelLarge),
-              const SizedBox(height: 8),
-              _hint(context, 'Single tap', 'Earmark this moment. Say what to remember right after: "remind me to…"'),
-              _hint(context, 'Double tap', 'Pause or resume recording'),
-              _hint(context, 'Vibrations', 'three short = recording, one long = paused, one medium = earmarked'),
-              _hint(context, 'Hold 3 s', 'Power off (press to turn back on)'),
-            ]),
-          ),
+          Row(children: [
+            Expanded(child: Text('LATEST', style: tt.labelSmall?.copyWith(letterSpacing: 1.2, color: t.ink3))),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ConversationsScreen(c: c))),
+              child: const Text('All conversations'),
+            ),
+          ]),
+          _Latest(c: c, gen: _gen),
         ]),
       ),
     );
   }
-
-  Widget _hint(BuildContext context, String a, String b) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(width: 92, child: Text(a, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: context.t.ink))),
-          Expanded(child: Text(b, style: TextStyle(fontSize: 13.5, color: context.t.ink2))),
-        ]),
-      );
 
   (String, String, Color, bool) _state(EarmarkController c, Tokens t) {
     final p = c.pendant;
@@ -251,5 +245,71 @@ class _Battery extends StatelessWidget {
       const SizedBox(width: 3),
       Text('$pct%', style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w500)),
     ]);
+  }
+}
+
+/// The three most recent conversations, refreshed every minute, after each upload and on pull-down.
+class _Latest extends StatefulWidget {
+  final EarmarkController c;
+  final int gen;
+  const _Latest({required this.c, required this.gen});
+  @override
+  State<_Latest> createState() => _LatestState();
+}
+
+class _LatestState extends State<_Latest> {
+  List<Map>? _rows;
+  Timer? _t;
+  DateTime? _seenUpload;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _t = Timer.periodic(const Duration(seconds: 60), (_) => _load());
+    widget.c.addListener(_onController);
+  }
+
+  void _onController() {
+    if (widget.c.lastUpload != _seenUpload) {
+      _seenUpload = widget.c.lastUpload;
+      _load();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _Latest old) {
+    super.didUpdateWidget(old);
+    if (old.gen != widget.gen) _load();
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    widget.c.removeListener(_onController);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final api = widget.c.api;
+    if (api == null) return;
+    try {
+      final all = (await api.sessions()).cast<Map>();
+      if (mounted) setState(() => _rows = all.take(3).toList());
+    } catch (_) {/* keep what we had; the Mac card already shows the link state */}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _rows;
+    if (rows == null) return const SizedBox(height: 40);
+    if (rows.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text('Nothing yet today. Conversations appear here once your Mac has transcribed them.',
+            style: Theme.of(context).textTheme.bodySmall),
+      );
+    }
+    return Column(key: const Key('latest'), children: [for (final s in rows) SessionTile(c: widget.c, s: s)]);
   }
 }
