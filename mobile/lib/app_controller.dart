@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:earmark_asr/earmark_asr.dart';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -775,6 +776,53 @@ class EarmarkController extends ChangeNotifier {
     unawaited(updateAskIndex());
     unawaited(Intents.unindex(['conv-${v.id}']));
     _spotlit.remove(v.id);
+  }
+
+  // ------------------------------------------------------------ Today
+  final Map<String, (String, String)> _briefs = {}; // day → (what it was written from, the brief)
+  bool writingBrief = false;
+
+  /// The conversations of a day (with notes or not), oldest first.
+  List<Conversation> dayConversations(DateTime day) {
+    final a = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch / 1000, b = a + 86400;
+    return [for (final v in (convs?.all ?? const <Conversation>[]).reversed) if (v.start >= a && v.start < b && v.status != 'empty') v];
+  }
+
+  /// A short brief of the day, written by the notes model from the day's notes (cached until they change).
+  String? briefFor(DateTime day) {
+    final key = Heard.dayKey(day);
+    final hit = _briefs[key];
+    return hit != null && hit.$1 == _briefSource(day) ? hit.$2 : null;
+  }
+
+  String _briefSource(DateTime day) => [
+        for (final v in dayConversations(day))
+          if (v.status == 'ready') '${DateFormat('HH:mm').format(v.startTime)} · ${convTitleText(v)}\n${v.summary ?? ''}'
+              '${v.decisions.isEmpty ? '' : '\nDecided: ${v.decisions.join('; ')}'}'
+              '${v.tasks.isEmpty ? '' : '\nTasks: ${v.tasks.map((k) => '${k.text} (${k.mine ? 'me' : k.owner}${k.due.isEmpty ? '' : ', ${k.due}'})').join('; ')}'}',
+      ].join('\n\n');
+
+  Future<String?> writeBrief(DateTime day) async {
+    final src = _briefSource(day);
+    if (src.isEmpty || !notesOn || writingBrief) return briefFor(day);
+    writingBrief = true;
+    notifyListeners();
+    try {
+      final excerpts = src.split('\n\n');
+      final model = cloud;
+      final now = DateTime.now();
+      final (text, _) = await (model != null ? model.answer : asrEngine.answer)(
+          'Write a short brief of my day for me: what happened, what was decided, and what I promised to do, '
+          'naming the people involved. No preamble.',
+          excerpts,
+          today: '${_weekday(now)} ${now.day}/${now.month}/${now.year}');
+      _briefs[Heard.dayKey(day)] = (src, text.replaceAll(RegExp(r'\s*\[\d+(?:\s*,\s*\d+)*\]'), '').trim());
+    } catch (_) {
+    } finally {
+      writingBrief = false;
+      notifyListeners();
+    }
+    return briefFor(day);
   }
 
   // ------------------------------------------------------------ Siri, Shortcuts, Spotlight

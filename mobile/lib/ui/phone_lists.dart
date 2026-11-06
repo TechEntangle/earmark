@@ -1,5 +1,6 @@
 // Conversations and tasks made on the iPhone (see notes/conversations.dart).
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
 
 import '../app_controller.dart';
@@ -214,6 +215,39 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
     if (name != null) c.renameConversation(v, name);
   }
 
+  /// Notes (and the transcript) as text, for Messages, Mail, Notes…
+  Future<void> _share(Conversation v, {required bool transcript}) async {
+    final h = c.heard;
+    final when = DateFormat('EEEE d MMMM yyyy, HH:mm').format(v.startTime);
+    final b = StringBuffer('${c.convTitleText(v)}\n$when\n');
+    if ((v.summary ?? '').isNotEmpty) b.write('\n${v.summary}\n');
+    if (v.keyPoints.isNotEmpty) b.write('\nKey points\n${v.keyPoints.map((x) => '• $x').join('\n')}\n');
+    if (v.decisions.isNotEmpty) b.write('\nDecisions\n${v.decisions.map((x) => '• $x').join('\n')}\n');
+    if (v.tasks.isNotEmpty) {
+      b.write('\nTasks\n');
+      for (final k in v.tasks) {
+        b.write('${k.done ? '☑' : '☐'} ${k.text}${k.mine ? '' : ' (${k.owner})'}${k.due.isNotEmpty ? ' · ${k.due}' : ''}\n');
+      }
+    }
+    if (transcript && h != null) {
+      b.write('\nTranscript\n');
+      String? last;
+      for (final l in Conversations.lines(v, h)) {
+        final who = l.speaker == null ? null : v.label(l.speaker!, guesses: false);
+        final m = (l.at ~/ 60).toString().padLeft(2, '0'), s = (l.at.round() % 60).toString().padLeft(2, '0');
+        b.write('[$m:$s] ${who != null && who != last ? '$who: ' : ''}${l.text}\n');
+        last = who ?? last;
+      }
+    }
+    await SharePlus.instance.share(ShareParams(text: b.toString().trim(), subject: c.convTitleText(v)));
+  }
+
+  Future<void> _shareAudio(Conversation v) async {
+    final path = await player(v)?.file();
+    if (path == null) return;
+    await SharePlus.instance.share(ShareParams(files: [XFile(path, mimeType: 'audio/wav')], subject: c.convTitleText(v)));
+  }
+
   Future<void> _delete(Conversation v) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -283,10 +317,17 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
               onSelected: (x) => switch (x) {
                 'rename' => _rename(v),
                 'notes' => c.rewriteNotes(v),
+                'share' => _share(v, transcript: false),
+                'shareAll' => _share(v, transcript: true),
+                'audio' => _shareAudio(v),
                 'delete' => _delete(v),
                 _ => null,
               },
               itemBuilder: (_) => [
+                if (v.status == 'ready') const PopupMenuItem(value: 'share', child: Text('Share notes')),
+                const PopupMenuItem(value: 'shareAll', child: Text('Share notes and transcript')),
+                if (player(v) != null) const PopupMenuItem(value: 'audio', child: Text('Share the recording')),
+                const PopupMenuDivider(),
                 const PopupMenuItem(value: 'rename', child: Text('Rename')),
                 if (c.notesOn) const PopupMenuItem(value: 'notes', child: Text('Rewrite notes')),
                 const PopupMenuItem(value: 'delete', child: Text('Delete')),

@@ -52,6 +52,9 @@ class ConvPlayer extends ChangeNotifier {
 
   bool get available => audio.supported && files().$1.isNotEmpty;
 
+  /// The conversation's audio as one WAV file (for sharing).
+  Future<String?> file() => _prepare();
+
   Future<String?> _prepare() async {
     if (_path != null) return _path;
     final (paths, offsets) = files();

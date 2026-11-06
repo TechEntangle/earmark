@@ -18,6 +18,7 @@ dependencies:
   intl: ^0.20.3
   earmark_asr:                        # on-device speech to text (iOS: Parakeet via FluidAudio)
     path: packages/earmark_asr
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

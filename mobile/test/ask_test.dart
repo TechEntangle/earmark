@@ -7,6 +7,7 @@ import 'package:earmark/pendant/pendant_service.dart';
 import 'package:earmark/transcribe/heard.dart';
 import 'package:earmark/ui/ask_screen.dart';
 import 'package:earmark/ui/phone_lists.dart';
+import 'package:earmark/ui/phone_today.dart';
 import 'package:earmark/ui/theme.dart';
 import 'package:earmark_asr/earmark_asr.dart';
 import 'package:flutter/material.dart';
@@ -130,6 +131,22 @@ void main() {
     final ps = c.askIndex!.during(c.convs!.all, t0 - 60, t0 + 86400);
     expect(ps.first.kind, 'notes');
     expect(ps.map((p) => p.conv).toSet(), {1, 5});
+  });
+
+  testWidgets("today on the phone: the day's brief, what's due, conversations", (t) async {
+    t.view.physicalSize = const Size(1179, 3000);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    final (c, engine) = setUpController();
+    final day = DateTime.fromMillisecondsSinceEpoch((t0 * 1000).round());
+    expect(c.dayConversations(day).map((v) => v.id), [1, 5]);
+    await t.runAsync(() => c.writeBrief(day));
+    expect(c.briefFor(day), 'Sam will send the vendor contract by Thursday.');
+    expect(engine.asked.last.$2.first, contains('Vendor contract follow-up'));
+    await t.pumpWidget(MaterialApp(theme: earmarkTheme(Brightness.light), home: PhoneTodayScreen(c: c)));
+    await t.pump();
+    expect(find.byKey(const Key('dayBrief')), findsOneWidget);
+    c.dispose();
   });
 }
 

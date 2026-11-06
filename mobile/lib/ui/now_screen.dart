@@ -10,6 +10,7 @@ import 'heard_screen.dart';
 import 'lists.dart';
 import 'pendant_screen.dart';
 import 'phone_lists.dart';
+import 'phone_today.dart';
 import 'settings_screen.dart';
 import 'theme.dart';
 
@@ -94,9 +95,10 @@ class _NowScreenState extends State<NowScreen> {
               child: Text('LATEST', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2, color: t.ink2)),
             ),
             const Spacer(),
-            if (c.asrOn)
-              TextButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TodayScreen(c: c))),
+            TextButton(
+                key: const Key('todayLink'),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => c.asrOn ? PhoneTodayScreen(c: c) : TodayScreen(c: c))),
                 child: const Text('Today'),
               ),
             TextButton(
