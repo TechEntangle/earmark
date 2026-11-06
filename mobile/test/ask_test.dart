@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:earmark/app_controller.dart';
 import 'package:earmark/ask/ask_index.dart';
+import 'package:earmark/core/api.dart';
 import 'package:earmark/notes/conversations.dart';
 import 'package:earmark/pendant/pendant_service.dart';
 import 'package:earmark/transcribe/heard.dart';
@@ -12,6 +14,8 @@ import 'package:earmark/ui/theme.dart';
 import 'package:earmark_asr/earmark_asr.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'notes_test.dart' show MemConfig, words;
 import 'screens_test.dart' show loadFonts;
@@ -146,6 +150,27 @@ void main() {
     await t.pumpWidget(MaterialApp(theme: earmarkTheme(Brightness.light), home: PhoneTodayScreen(c: c)));
     await t.pump();
     expect(find.byKey(const Key('dayBrief')), findsOneWidget);
+    c.dispose();
+  });
+
+  test('follow-up questions read the one before; nothing here: your Mac answers', () async {
+    expect(EarmarkController.isFollowUp('and when is it due?'), isTrue);
+    expect(EarmarkController.isFollowUp('What did we decide about the vendor contract budget?'), isFalse);
+    final (c, engine) = setUpController();
+    final first = await c.ask('Who sends the vendor contract?');
+    await c.ask('and when?', previous: first);
+    expect(engine.asked.last.$1, contains('Earlier I asked: "Who sends the vendor contract?"'));
+    expect(engine.asked.last.$2.join(), contains('vendor contract'), reason: 'found through the question before');
+
+    c.api = Api(Uri.parse('https://mac.tail1234.ts.net'), 'tok', client: MockClient((r) async {
+      expect(r.url.path, '/api/ask');
+      return http.Response(jsonEncode({'answer': 'Priya booked the venue on Monday.', 'used': [1],
+        'passages': [{'sid': 9, 't': 0, 'kind': 'talk', 'text': 'Priya booked the venue.', 'at': 1790000000}]}), 200);
+    }));
+    c.link = Link.online;
+    final a = await c.ask('Who booked the venue?');
+    expect(a.fromMac, isTrue);
+    expect(a.text, 'Priya booked the venue on Monday.');
     c.dispose();
   });
 }

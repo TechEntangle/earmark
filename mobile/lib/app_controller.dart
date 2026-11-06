@@ -36,7 +36,10 @@ class AskAnswer {
   /// Passages the answer cites (numbers from 1, as in [hits])
   final List<int> used;
   final String? error;
-  const AskAnswer(this.question, this.text, this.hits, this.used, {this.error});
+  /// answered by your Mac (from conversations that aren't on this phone): its excerpts
+  final List<Map<String, dynamic>> macPassages;
+  const AskAnswer(this.question, this.text, this.hits, this.used, {this.error, this.macPassages = const []});
+  bool get fromMac => macPassages.isNotEmpty;
 }
 
 /// The on-device speech engine (swappable in tests).
@@ -902,15 +905,28 @@ class EarmarkController extends ChangeNotifier {
 
   /// Ask a question about everything heard: the best passages, and an answer from Apple's
   /// on-device model citing them (when Apple Intelligence is available).
-  Future<AskAnswer> ask(String question) async {
+  /// A follow-up ("and when is it due?", "what about Sam?") is read together with the question before it.
+  static bool isFollowUp(String q) {
+    final w = q.toLowerCase().split(RegExp(r'\W+')).where((x) => x.isNotEmpty).toList();
+    return w.length <= 7 &&
+        (w.any((x) => const {'it', 'that', 'this', 'they', 'them', 'he', 'she', 'him', 'her', 'those', 'there', 'then'}.contains(x)) ||
+            const {'and', 'what', 'how', 'also', 'so', 'why'}.contains(w.firstOrNull));
+  }
+
+  Future<AskAnswer> ask(String question, {AskAnswer? previous}) async {
     final ix = askIndex, cs = convs;
     if (ix == null || cs == null) return AskAnswer(question, null, const [], const []);
+    final follow = previous != null && isFollowUp(question);
+    final lookFor = follow ? '${previous.question} $question' : question;
+    final modelQuestion = follow
+        ? 'Earlier I asked: "${previous.question}"${previous.text != null ? ' and you answered: "${previous.text}"' : ''}. Now: $question'
+        : question;
     await updateAskIndex(limit: 50);
     var qv = const <double>[];
     try {
-      qv = (await asrEngine.embed([question])).firstOrNull ?? const <double>[];
+      qv = (await asrEngine.embed([lookFor])).firstOrNull ?? const <double>[];
     } catch (_) {}
-    var hits = ix.search(question, qv);
+    var hits = ix.search(lookFor, qv);
     // "today", "yesterday", "on Monday", "this week": the conversations of that time too
     final span = askSpan(question, DateTime.now());
     if (span != null) {
@@ -923,7 +939,7 @@ class EarmarkController extends ChangeNotifier {
       hits = [...timed, ...hits.where((h) => inSpan.contains(h.$1.conv))].take(10).toList();
       if (timed.isEmpty) hits = [];
     }
-    if (hits.isEmpty) return AskAnswer(question, null, const [], const []);
+    if (hits.isEmpty) return _askMac(question);
     if (!notesOn) return AskAnswer(question, null, hits, const []);
     final excerpts = [
       for (final (p, _) in hits)
@@ -937,11 +953,26 @@ class EarmarkController extends ChangeNotifier {
     try {
       final now = DateTime.now();
       final model = cloud;
-      final (text, used) = await (model != null ? model.answer : asrEngine.answer)(question, excerpts,
+      final (text, used) = await (model != null ? model.answer : asrEngine.answer)(modelQuestion, excerpts,
           today: '${_weekday(now)} ${now.day}/${now.month}/${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
       return AskAnswer(question, text, hits, used);
     } on NotesError catch (e) {
       return AskAnswer(question, null, hits, const [], error: e.message);
+    }
+  }
+
+  /// Nothing on this phone: your Mac may have it (conversations from before, or recorded on the Mac).
+  Future<AskAnswer> _askMac(String question) async {
+    final a = api;
+    if (a == null || link != Link.online) return AskAnswer(question, null, const [], const []);
+    try {
+      final r = Map<String, dynamic>.from(await a.post('/api/ask', {'q': question}) as Map);
+      final ps = [for (final p in (r['passages'] as List? ?? [])) Map<String, dynamic>.from(p as Map)];
+      if (ps.isEmpty) return AskAnswer(question, null, const [], const []);
+      return AskAnswer(question, r['answer'] as String?, const [], [for (final u in (r['used'] as List? ?? [])) (u as num).toInt()],
+          macPassages: ps, error: r['error'] as String?);
+    } catch (_) {
+      return AskAnswer(question, null, const [], const []);
     }
   }
 

@@ -32,7 +32,7 @@ class _AskScreenState extends State<AskScreen> {
     _q.clear();
     setState(() => _asking = q);
     try {
-      final a = await widget.c.ask(q);
+      final a = await widget.c.ask(q, previous: _answers.lastOrNull);
       if (mounted) setState(() => _answers.add(a));
     } finally {
       if (mounted) setState(() => _asking = null);
@@ -173,8 +173,30 @@ class _AnswerCard extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _Bubble(text: a.question),
       const SizedBox(height: 10),
-      if (a.hits.isEmpty)
-        Text("I couldn't find anything about that on this phone.", style: TextStyle(fontSize: 15, color: t.ink2))
+      if (a.fromMac) ...[
+        if (a.text != null)
+          Text(a.text!, key: const Key('answerText'), style: const TextStyle(fontFamily: 'Newsreader', fontSize: 17.5, height: 1.5)),
+        const SizedBox(height: 6),
+        Text('From your Mac', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: t.ink3)),
+        const SizedBox(height: 6),
+        for (final p in [
+          for (final u in (a.used.isNotEmpty ? a.used : [1, 2, 3]))
+            if (u >= 1 && u <= a.macPassages.length) a.macPassages[u - 1],
+        ])
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(color: t.surface, border: Border.all(color: t.line), borderRadius: BorderRadius.circular(12)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(DateFormat('EEE d MMM, HH:mm').format(DateTime.fromMillisecondsSinceEpoch(((p['at'] as num) * 1000).round())),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: t.liveInk)),
+              const SizedBox(height: 4),
+              Text('${p['text']}', maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, height: 1.4, color: t.ink2)),
+            ]),
+          ),
+      ] else if (a.hits.isEmpty)
+        Text("I couldn't find anything about that on this phone${c.link == Link.online ? ' or your Mac' : ''}.",
+            style: TextStyle(fontSize: 15, color: t.ink2))
       else ...[
         if (a.text != null)
           Text(a.text!.replaceAll(RegExp(r'\s*\[\d+(?:\s*,\s*\d+)*\]'), ''), key: const Key('answerText'), style: const TextStyle(fontFamily: 'Newsreader', fontSize: 17.5, height: 1.5)),
