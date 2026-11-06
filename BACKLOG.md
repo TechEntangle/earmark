@@ -12,6 +12,11 @@ each section. Status: **now** (being built), **next**, **later**, **idea**, **do
   Ask); keys in the Keychain; text only, never audio; a clear "leaves this phone" label.
 
 ## Next
+- **Native Mac app**: replace the Python service + web page with a real Mac app (menu bar + window),
+  sharing the iPhone app's code (Flutter macOS) and the same on-device engines (Parakeet, WhisperKit,
+  Apple's model, speakers); notifications, launch at login, no Terminal. Python retired in stages.
+- **Pendant firmware updates from Earmark** (the firmware accepts updates over Bluetooth); careful:
+  battery check, verified images only.
 - **Ask, version 2**: Ask calls tools (conversations by date/person, open tasks, people, calendar)
   instead of only retrieving passages; follow-up questions; Ask over Mac-only conversations too.
 - **Siri, Shortcuts, Spotlight** (App Intents): "Hey Siri, ask Earmark…", Earmark this moment,
@@ -66,8 +71,9 @@ export, widgets/Siri, pendant care (OTA, battery history), integrations (we keep
 Things not to copy: cloud processing, public share links, third-party app store with raw-audio access.
 
 ## Done
-- Pendant settings on the iPhone (light, microphone level, single/double tap, vibration), kept in
-  step with the Mac.
+- Pendant page on the iPhone: everything the CV1 firmware exposes. Button actions (tap, double tap,
+  press-and-hold: earmark / pause / nothing), vibration, light, microphone level, find my pendant,
+  and model, firmware, hardware, charging, clock, own memory, health. Kept in step with the Mac.
 - Tasks into Apple Reminders with due dates and alerts; ticking off there ticks off in Earmark.
 - Pendant on the iPhone with crash-safe recording; Mac as backup with handoff ("Use this iPhone").
 - Home screen: status chain (pendant, battery, holder, Mac), one action, latest conversations.

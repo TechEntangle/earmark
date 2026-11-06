@@ -66,6 +66,7 @@ void main() {
       t = TapInterpreter(
         onSingle: (at) => got.add('single@${at.second}'),
         onDouble: () => got.add('double'),
+        onHold: () => got.add('hold'),
         schedule: (d, f) {
           final id = nextId++;
           timers[id] = f;
@@ -114,13 +115,34 @@ void main() {
       expect(got, ['double']);
     });
 
-    test('down/up/long press do nothing', () {
-      for (final e in [ButtonEvent.down, ButtonEvent.up, ButtonEvent.longPress]) {
+    test('down and long press do nothing', () {
+      for (final e in [ButtonEvent.down, ButtonEvent.longPress]) {
         t.handle(e);
       }
       fire();
       expect(got, isEmpty);
     });
+
+    test('a release with no tap before it is a press-and-hold; a tap\'s own release is not', () {
+      t.handle(ButtonEvent.up);
+      expect(got, ['hold']);
+      t.handle(ButtonEvent.doubleTap);
+      t.handle(ButtonEvent.up);
+      expect(got, ['hold', 'double']);
+      t.handle(ButtonEvent.up);
+      expect(got, ['hold', 'double', 'hold']);
+    });
+  });
+
+  test('features, health and clock from the firmware', () {
+    expect(decodeFeatures(0x1EC), ['button', 'battery', 'vibration', 'own memory', 'light dimming', 'microphone level']);
+    expect(u32le([0x10, 0, 0, 0]), 16);
+    final h = PendantHealth.parse([1, 0, 0, 2, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0])!;
+    expect(h.ok, isTrue);
+    expect(h.bootAttempts, 3);
+    expect(h.lastRestart, startsWith('watchdog'));
+    expect(PendantHealth.parse([1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0])!.ok, isFalse);
+    expect(PendantHealth.parse([2, 0]), isNull);
   });
 
   test('vibration patterns', () {

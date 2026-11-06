@@ -22,6 +22,16 @@ class PendantService extends ChangeNotifier {
   int? battery;
   int? codec;
   String? firmware;
+  String? model, manufacturer, hardware;
+  /// on its charger (null: this firmware doesn't say)
+  bool? charging;
+  /// what the firmware says the pendant has
+  List<String>? features;
+  /// how far the pendant's clock was off when it connected (it is set right on every connect)
+  Duration? clockWasOff;
+  PendantHealth? health;
+  /// the pendant's own memory, as of the last catch-up
+  RingInfo? memory;
   String? lastError;
   DateTime? connectedAt;
 
@@ -46,7 +56,7 @@ class PendantService extends ChangeNotifier {
   /// background a pending connection waits quietly instead.
   bool foreground = true;
   Timer? _stall;
-  StreamSubscription? _statusSub, _scanSub, _connSub, _audioSub, _buttonSub, _battSub, _ringSub;
+  StreamSubscription? _statusSub, _scanSub, _connSub, _audioSub, _buttonSub, _battSub, _ringSub, _chargeSub;
   StreamController<List<int>>? _ringQ;
   Timer? _retry, _battTimer;
   late FrameAssembler _asm = FrameAssembler(_frames.add);
@@ -197,6 +207,31 @@ class PendantService extends ChangeNotifier {
       firmware = String.fromCharCodes(await ble.readCharacteristic(_c(OmiUuids.deviceInfoService, OmiUuids.firmwareRev)))
           .replaceAll('\x00', '');
     } catch (_) {}
+    Future<String?> str(String svc, String ch) async {
+      try {
+        return String.fromCharCodes(await ble.readCharacteristic(_c(svc, ch))).replaceAll('\x00', '').trim();
+      } catch (_) {
+        return null;
+      }
+    }
+    model = await str(OmiUuids.deviceInfoService, OmiUuids.model);
+    manufacturer = await str(OmiUuids.deviceInfoService, OmiUuids.manufacturer);
+    hardware = await str(OmiUuids.deviceInfoService, OmiUuids.hardwareRev);
+    try {
+      final f = u32le(await ble.readCharacteristic(_c(OmiUuids.featuresService, OmiUuids.features)));
+      if (f != null) features = decodeFeatures(f);
+    } catch (_) {}
+    try {
+      final t = u32le(await ble.readCharacteristic(_c(OmiUuids.timeService, OmiUuids.timeRead)));
+      if (t != null) clockWasOff = Duration(seconds: t - DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    } catch (_) {}
+    try {
+      health = PendantHealth.parse(await ble.readCharacteristic(_c(OmiUuids.diagnosticsService, OmiUuids.diagnostics)));
+    } catch (_) {}
+    try {
+      final c = await ble.readCharacteristic(_c(OmiUuids.settingsService, OmiUuids.charging));
+      if (c.isNotEmpty) charging = c.first == 1;
+    } catch (_) {}
     await syncClock();
     await _readBattery();
     connectedAt = DateTime.now();
@@ -229,6 +264,14 @@ class PendantService extends ChangeNotifier {
       _battSub = ble.subscribeToCharacteristic(_c(OmiUuids.batteryService, OmiUuids.batteryLevel)).listen((d) {
         if (d.isNotEmpty) {
           battery = d.first;
+          notifyListeners();
+        }
+      }, onError: (_) {});
+    } catch (_) {}
+    try {
+      _chargeSub = ble.subscribeToCharacteristic(_c(OmiUuids.settingsService, OmiUuids.charging)).listen((d) {
+        if (d.isNotEmpty) {
+          charging = d.first == 1;
           notifyListeners();
         }
       }, onError: (_) {});
@@ -271,6 +314,8 @@ class PendantService extends ChangeNotifier {
     _audioSub?.cancel();
     _buttonSub?.cancel();
     _battSub?.cancel();
+    _chargeSub?.cancel();
+    _chargeSub = null;
     _battTimer?.cancel();
     _audioSub = _buttonSub = _battSub = null;
   }
@@ -310,7 +355,7 @@ class PendantService extends ChangeNotifier {
   Future<RingInfo> ringInfo() async {
     final f = _ringReply((m) => RingInfo.parse(m) != null, const Duration(seconds: 10));
     await ble.writeCharacteristicWithResponse(_c(OmiUuids.ringService, OmiUuids.ringCtrl), value: Ring.info());
-    return RingInfo.parse(await f)!;
+    return memory = RingInfo.parse(await f)!;
   }
 
   /// Read up to [count] records starting at [start]. Returns the bytes and the next sequence.
@@ -358,6 +403,19 @@ class PendantService extends ChangeNotifier {
   Future<bool> syncClock() => _write(OmiUuids.timeService, OmiUuids.timeWrite, clockBytes(DateTime.now()));
   Future<bool> setLed(int pct) => _write(OmiUuids.settingsService, OmiUuids.dimRatio, [pct.clamp(0, 100)]);
   Future<bool> setMicGain(int level) => _write(OmiUuids.settingsService, OmiUuids.micGain, [level.clamp(0, 8)]);
+
+  /// Help find the pendant: the light flashes and it vibrates for about ten seconds.
+  /// [restoreLed] is the brightness to go back to.
+  Future<void> findMe(int restoreLed) async {
+    for (var i = 0; i < 8 && connected; i++) {
+      await setLed(100);
+      await _write(OmiUuids.hapticService, OmiUuids.haptic, [3]);
+      await Future.delayed(const Duration(milliseconds: 650));
+      await setLed(0);
+      await Future.delayed(const Duration(milliseconds: 600));
+    }
+    await setLed(restoreLed);
+  }
 
   Future<void> buzz(List<Pulse> pattern) async {
     for (final (code, pause) in pattern) {

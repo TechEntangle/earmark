@@ -6,10 +6,12 @@ import 'package:earmark/app_controller.dart';
 import 'package:earmark/core/api.dart';
 import 'package:earmark/core/config.dart';
 import 'package:earmark/pendant/pendant_service.dart';
+import 'package:earmark/pendant/prefs.dart';
 import 'package:earmark/pendant/protocol.dart';
 import 'package:earmark/recorder/chunk_store.dart';
 import 'package:earmark/ui/now_screen.dart';
 import 'package:earmark/ui/pair_screen.dart';
+import 'package:earmark/ui/pendant_screen.dart';
 import 'package:earmark/ui/settings_screen.dart';
 import 'package:earmark/ui/theme.dart';
 import 'package:flutter/material.dart';
@@ -266,11 +268,18 @@ void main() {
     c.earmarkNow();
     expect(c.earmarks, isNotEmpty);
     expect(p.buzzes, isEmpty);
-    // double tap to pause turned off: a double tap does nothing
-    await c.setPrefs(c.prefs.copyWith(doubleTapPause: false));
+    // double tap set to nothing: does nothing
+    await c.setPrefs(c.prefs.copyWith(doubleTap: ButtonAction.none));
     c.button(ButtonEvent.doubleTap);
+    c.button(ButtonEvent.up);
     expect(c.paused, isFalse);
-    await c.setPrefs(c.prefs.copyWith(doubleTapPause: true));
+    // press and hold set to earmark: a release with no tap before it
+    final n = c.earmarks.length;
+    await c.setPrefs(c.prefs.copyWith(hold: ButtonAction.earmark));
+    c.button(ButtonEvent.up);
+    expect(c.earmarks.length, n + 1);
+    expect(pushed.last['hold_action'], 'earmark');
+    await c.setPrefs(c.prefs.copyWith(doubleTap: ButtonAction.pause));
     c.button(ButtonEvent.doubleTap);
     await Future<void>.delayed(Duration.zero);
     expect(c.paused, isTrue);
@@ -278,17 +287,37 @@ void main() {
     c.dispose();
   });
 
-  testWidgets('settings: the pendant panel', (t) async {
-    final p = FakePendant()..firmware = '2.0.10';
+  testWidgets('settings: the pendant page', (t) async {
+    t.view.physicalSize = const Size(1179, 5200);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    final p = FakePendant()
+      ..firmware = '3.0.22'
+      ..model = 'Omi CV 1'
+      ..manufacturer = 'Based Hardware'
+      ..hardware = '5.0'
+      ..charging = true
+      ..features = decodeFeatures(0x1EC)
+      ..clockWasOff = const Duration(seconds: -95)
+      ..health = PendantHealth.parse([1, 0, 0, 2, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0])
+      ..memory = const RingInfo(10, 10, 9000, 0, 444);
     await p.start();
     final c = controller(p);
     await t.pumpWidget(wrap(SettingsScreen(c: c)));
-    expect(find.text('Battery 82% · firmware 2.0.10'), findsOneWidget);
-    expect(find.byKey(const Key('ledSlider')), findsOneWidget);
+    expect(find.text('82%, charging · connected to this iPhone'), findsOneWidget);
+    await t.tap(find.byKey(const Key('pendantRow')));
+    await t.pumpAndSettle();
+    expect(find.text('Omi CV 1 by Based Hardware'), findsOneWidget);
+    expect(find.text('Was 95 s behind, set right on connect'), findsOneWidget);
+    expect(find.text('Good · software restart'), findsOneWidget);
+    expect(find.text('button, battery, vibration, own memory, light dimming, microphone level'), findsOneWidget);
+    await t.tap(find.descendant(of: find.byKey(const Key('holdAction')), matching: find.text('Pause')));
+    await t.pump();
+    expect(c.prefs.hold, ButtonAction.pause);
     await t.tap(find.byKey(const Key('hapticsSwitch')));
     await t.pump();
     expect(c.prefs.haptics, isFalse);
-    expect(find.byKey(const Key('micGain')), findsOneWidget);
+    await expectLater(find.byType(PendantScreen), matchesGoldenFile('goldens/pendant.png'));
     c.dispose();
   });
 }

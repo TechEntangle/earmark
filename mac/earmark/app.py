@@ -40,7 +40,7 @@ if FAKE:
     from . import fake_pendant as PEND
 else:
     from . import pendant as PEND
-from .pendant import (BTN_DOUBLE, BTN_TAP, BUZZ_EARMARK, BUZZ_PAUSED, BUZZ_RECORDING, OPUS_CODECS, RECORD,
+from .pendant import (BTN_DOUBLE, BTN_TAP, BTN_UP, BUZZ_EARMARK, BUZZ_PAUSED, BUZZ_RECORDING, OPUS_CODECS, RECORD,
                       TAP_PAIR_WINDOW_S)
 
 PORT = int(os.environ.get("EARMARK_PORT", "8765"))
@@ -69,8 +69,9 @@ DEFAULT_CONFIG = {
     "batch_records": 256,
     "led_brightness": 100,        # 0-100, written to the pendant on connect
     "mic_gain": -1,               # 0-8, -1 = leave the pendant's setting alone
-    "double_tap_pause": True,
-    "single_tap_earmark": True,   # single tap marks the moment as important
+    "tap_action": "earmark",      # what the pendant's button does: earmark | pause | none
+    "double_tap_action": "pause",
+    "hold_action": "none",        # press and hold about a second, then let go (3 s turns it off)
     "haptics": True,              # vibrate to confirm pause / resume / earmark
     "min_speech_seconds": 3,
     "intel_provider": "local",    # local | ollama | openai | anthropic | off
@@ -109,6 +110,10 @@ def migrate_config():
         if raw.get("poll_seconds") == 45:
             raw["poll_seconds"] = 20
         raw["_v"] = 2
+    if raw.get("_v", 0) < 3:          # on/off switches -> a choice of action per gesture
+        raw.setdefault("tap_action", "earmark" if raw.pop("single_tap_earmark", True) else "none")
+        raw.setdefault("double_tap_action", "pause" if raw.pop("double_tap_pause", True) else "none")
+        raw["_v"] = 3
         cfg = dict(DEFAULT_CONFIG)
         cfg.update(raw)
         save_config(cfg)
@@ -270,6 +275,7 @@ class State:
         self.pd = None                         # the connected pendant, for vibrations
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.tap_pending: Optional[tuple] = None   # (monotonic time, wall time, timer handle)
+        self.tapped_since_up = False
         self.last_earmark: Optional[float] = None
         self.last_sync_at: Optional[int] = kv_get("last_sync_at")
         # signals
@@ -305,28 +311,46 @@ def buzz(pattern):
     loop.call_soon_threadsafe(lambda: loop.create_task(pd.buzz(pattern)))
 
 
+BUTTON_ACTIONS = ("earmark", "pause", "none")
+
+
+def _button_action(action: str, at: float, how: str):
+    if action == "earmark":
+        _commit_earmark(at)
+    elif action == "pause":
+        set_paused(not S.paused, how)
+
+
 def handle_button(ev: int):
-    """Runs on the event loop. A firmware double tap pauses/resumes. A single tap earmarks the
-    moment, but only after TAP_PAIR_WINDOW_S: a second single tap in that window means the
-    person double-tapped a little slowly, so it pauses/resumes instead."""
+    """Runs on the event loop. Each gesture does what Settings says (earmark, pause/resume or
+    nothing). A single tap waits TAP_PAIR_WINDOW_S before acting: a second single tap in that
+    window means the person double-tapped a little slowly. Press-and-hold is a release with no
+    tap before it (the firmware sends "released" after every press; 3 s turns the pendant off)."""
     cfg = load_config()
     now = time.monotonic()
+    if ev in (BTN_TAP, BTN_DOUBLE):
+        S.tapped_since_up = True
+    if ev == BTN_UP:
+        if not S.tapped_since_up and cfg["hold_action"] != "none":
+            _button_action(cfg["hold_action"], time.time(), "press and hold on the pendant")
+        S.tapped_since_up = False
+        return
     if ev == BTN_DOUBLE:
         _cancel_tap()
-        if cfg["double_tap_pause"]:
-            set_paused(not S.paused, "double-tap on the pendant")
+        _button_action(cfg["double_tap_action"], time.time(), "double-tap on the pendant")
         return
     if ev != BTN_TAP:
         return
     if S.tap_pending and now - S.tap_pending[0] <= TAP_PAIR_WINDOW_S:
+        wall = S.tap_pending[1]
         _cancel_tap()
-        if cfg["double_tap_pause"]:
-            set_paused(not S.paused, "double-tap on the pendant")
+        _button_action(cfg["double_tap_action"], wall, "double-tap on the pendant")
         return
-    if not cfg["single_tap_earmark"]:
+    if cfg["tap_action"] == "none" and cfg["double_tap_action"] == "none":
         return
     wall = time.time()
-    handle = asyncio.get_running_loop().call_later(TAP_PAIR_WINDOW_S, _commit_earmark, wall)
+    handle = asyncio.get_running_loop().call_later(
+        TAP_PAIR_WINDOW_S, lambda: (setattr(S, "tap_pending", None), _button_action(cfg["tap_action"], wall, "tap on the pendant")))
     S.tap_pending = (now, wall, handle)
 
 
@@ -337,7 +361,6 @@ def _cancel_tap():
 
 
 def _commit_earmark(at: float):
-    S.tap_pending = None
     if S.paused:
         buzz(BUZZ_PAUSED)                      # remind: nothing is being recorded
         S.say("Tap ignored: recording is paused", "warn")
@@ -1328,8 +1351,7 @@ def api_app_pair(request: Request, body: dict):
 
 def _app_settings() -> dict:
     cfg = load_config()
-    return {k: cfg.get(k) for k in ("led_brightness", "mic_gain", "single_tap_earmark", "double_tap_pause",
-                                    "haptics", "session_gap_seconds")}
+    return {k: cfg.get(k) for k in (*_PENDANT_KEYS, "session_gap_seconds")}
 
 
 @app.post("/api/app/heartbeat")
@@ -1363,7 +1385,7 @@ def api_app_heartbeat(request: Request, body: dict):
             "mac_has_pendant": bool(S.pd), "server_time": time.time()}
 
 
-_PENDANT_KEYS = ("led_brightness", "mic_gain", "single_tap_earmark", "double_tap_pause", "haptics")
+_PENDANT_KEYS = ("led_brightness", "mic_gain", "tap_action", "double_tap_action", "hold_action", "haptics")
 
 
 @app.post("/api/app/settings")
@@ -1377,7 +1399,11 @@ def api_app_settings(request: Request, body: dict):
             continue
         v = body[k]
         try:
-            v = bool(v) if isinstance(DEFAULT_CONFIG[k], bool) else int(float(v))
+            if k.endswith("_action"):
+                if v not in BUTTON_ACTIONS:
+                    raise ValueError
+            else:
+                v = bool(v) if isinstance(DEFAULT_CONFIG[k], bool) else int(float(v))
         except (TypeError, ValueError):
             raise HTTPException(400, f"invalid value for {k}")
         if k == "led_brightness":
@@ -2191,6 +2217,9 @@ def api_settings_put(body: dict):
             raise HTTPException(400, f"invalid value for {k}")
     cfg["led_brightness"] = max(0, min(100, cfg["led_brightness"]))
     cfg["mic_gain"] = max(-1, min(8, cfg["mic_gain"]))
+    for k in ("tap_action", "double_tap_action", "hold_action"):
+        if cfg[k] not in BUTTON_ACTIONS:
+            raise HTTPException(400, f"invalid value for {k}")
     cfg["poll_seconds"] = max(5, cfg["poll_seconds"])
     cfg["session_gap_seconds"] = max(15, cfg["session_gap_seconds"])
     if cfg["intel_provider"] not in ("local", "ollama", "openai", "anthropic", "off"):

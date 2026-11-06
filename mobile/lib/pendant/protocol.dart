@@ -16,6 +16,15 @@ class OmiUuids {
   static const settingsService = '19b10010-e8f2-537e-4f6c-d104768a1214';
   static const dimRatio = '19b10011-e8f2-537e-4f6c-d104768a1214'; // LED 0-100
   static const micGain = '19b10012-e8f2-537e-4f6c-d104768a1214'; // 0-8
+  static const charging = '19b10013-e8f2-537e-4f6c-d104768a1214'; // u8 0/1, read + notify
+  static const featuresService = '19b10020-e8f2-537e-4f6c-d104768a1214';
+  static const features = '19b10021-e8f2-537e-4f6c-d104768a1214'; // u32 LE bitmask
+  static const timeRead = '19b10032-e8f2-537e-4f6c-d104768a1214'; // u32 LE epoch
+  static const diagnosticsService = '19b10040-e8f2-537e-4f6c-d104768a1214';
+  static const diagnostics = '19b10041-e8f2-537e-4f6c-d104768a1214'; // 16 bytes, see PendantHealth
+  static const model = '00002a24-0000-1000-8000-00805f9b34fb';
+  static const hardwareRev = '00002a27-0000-1000-8000-00805f9b34fb';
+  static const manufacturer = '00002a29-0000-1000-8000-00805f9b34fb';
   static const timeService = '19b10030-e8f2-537e-4f6c-d104768a1214';
   static const timeWrite = '19b10031-e8f2-537e-4f6c-d104768a1214'; // u32 LE epoch
   static const batteryService = '0000180f-0000-1000-8000-00805f9b34fb';
@@ -32,6 +41,45 @@ class OmiUuids {
 }
 
 const deviceName = 'Omi';
+
+/// What the firmware says the pendant has (features characteristic, u32 LE bitmask).
+/// On the CV1 the speaker, motion sensor and USB data are switched off in the firmware.
+const pendantFeatures = {
+  0: 'speaker', 1: 'motion sensor', 2: 'button', 3: 'battery', 4: 'USB',
+  5: 'vibration', 6: 'own memory', 7: 'light dimming', 8: 'microphone level',
+};
+
+List<String> decodeFeatures(int mask) => [for (final e in pendantFeatures.entries) if (mask & (1 << e.key) != 0) e.value];
+
+int? u32le(List<int> d) => d.length < 4 ? null : ByteData.sublistView(Uint8List.fromList(d)).getUint32(0, Endian.little);
+
+/// The pendant's own health record (diagnostics characteristic, version 1, 16 bytes LE).
+class PendantHealth {
+  final bool safeMode, safeModeNextBoot;
+  final int bootAttempts, resetReason, latchReason;
+  const PendantHealth(this.safeMode, this.safeModeNextBoot, this.bootAttempts, this.resetReason, this.latchReason);
+
+  static PendantHealth? parse(List<int> d) {
+    if (d.length < 16 || d[0] != 1) return null;
+    final b = ByteData.sublistView(Uint8List.fromList(d));
+    return PendantHealth(d[1] == 1, d[2] == 1, b.getUint32(4, Endian.little), b.getUint32(8, Endian.little),
+        b.getUint32(12, Endian.little));
+  }
+
+  /// Why it last restarted, in words (nRF52 RESETREAS bits).
+  String get lastRestart {
+    final r = resetReason;
+    if (r & 0x1 != 0) return 'reset pin';
+    if (r & 0x2 != 0) return 'watchdog (it froze and recovered)';
+    if (r & 0x4 != 0) return 'software restart';
+    if (r & 0x8 != 0) return 'crash recovery';
+    if (r & 0x10000 != 0) return 'woke from off by the button';
+    if (r & 0xF0000 != 0) return 'woke from off';
+    return r == 0 ? 'powered on' : 'code 0x${r.toRadixString(16)}';
+  }
+
+  bool get ok => !safeMode && !safeModeNextBoot;
+}
 const opusCodecs = {20, 21};
 
 /// Button events the firmware sends.
@@ -93,6 +141,9 @@ class TapInterpreter {
   final Duration pairWindow;
   final void Function(DateTime at) onSingle;
   final void Function() onDouble;
+  /// press and hold, then let go: the firmware sends "released" with no tap before it
+  final void Function()? onHold;
+  bool _tappedSinceUp = false;
   final DateTime Function() now;
   DateTime? _pendingAt;
   Object? _timer;
@@ -102,6 +153,7 @@ class TapInterpreter {
   TapInterpreter({
     required this.onSingle,
     required this.onDouble,
+    this.onHold,
     required this.schedule,
     required this.cancel,
     this.pairWindow = const Duration(milliseconds: 1000),
@@ -109,6 +161,12 @@ class TapInterpreter {
   }) : now = now ?? DateTime.now;
 
   void handle(ButtonEvent ev) {
+    if (ev == ButtonEvent.tap || ev == ButtonEvent.doubleTap) _tappedSinceUp = true;
+    if (ev == ButtonEvent.up) {
+      if (!_tappedSinceUp) onHold?.call();
+      _tappedSinceUp = false;
+      return;
+    }
     switch (ev) {
       case ButtonEvent.doubleTap:
         _clear();

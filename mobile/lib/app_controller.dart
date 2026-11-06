@@ -218,12 +218,9 @@ class EarmarkController extends ChangeNotifier {
   }
 
   late final TapInterpreter _taps = TapInterpreter(
-    onSingle: (at) {
-      if (prefs.singleTapEarmark) _earmark(at);
-    },
-    onDouble: () {
-      if (prefs.doubleTapPause) unawaited(togglePause());
-    },
+    onSingle: (at) => _gesture(prefs.tap, at),
+    onDouble: () => _gesture(prefs.doubleTap, DateTime.now()),
+    onHold: () => _gesture(prefs.hold, DateTime.now()),
     schedule: (d, f) => Timer(d, f),
     cancel: (t) => (t as Timer?)?.cancel(),
   );
@@ -902,6 +899,20 @@ class EarmarkController extends ChangeNotifier {
     unawaited(_buzz(Buzz.earmark));
     _queueEvent('earmark', at);
   }
+
+  void _gesture(ButtonAction a, DateTime at) {
+    switch (a) {
+      case ButtonAction.earmark:
+        _earmark(at);
+      case ButtonAction.pause:
+        unawaited(togglePause());
+      case ButtonAction.none:
+        break;
+    }
+  }
+
+  /// Flash and buzz the pendant so it can be found.
+  Future<void> findPendant() => pendant.findMe(paused ? 0 : prefs.led);
 
   /// A press of the pendant's button (as it arrives over Bluetooth).
   void button(ButtonEvent e) => _taps.handle(e);

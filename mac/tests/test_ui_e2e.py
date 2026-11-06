@@ -394,6 +394,24 @@ def test_slow_double_tap_pauses_instead_of_earmarking(page: Page, server):
     expect(page.locator("#devState")).to_have_text("Recording", timeout=5_000)
 
 
+def test_press_and_hold_does_what_settings_say(page: Page, server):
+    expect(page.locator("#devState")).to_have_text("Recording", timeout=10_000)
+    marks0 = len(call(server, "/api/day")["earmarks"])
+    call(server, "/api/_fake/tap", "POST", {"kind": 5})                 # held: a release with no tap before it
+    time.sleep(0.5)
+    assert len(call(server, "/api/day")["earmarks"]) == marks0, "nothing by default"
+    call(server, "/api/settings", "PUT", {"hold_action": "earmark", "tap_action": "none"})
+    try:
+        call(server, "/api/_fake/tap", "POST", {"kind": 5})
+        wait_for(lambda: len(call(server, "/api/day")["earmarks"]) == marks0 + 1, 5, "hold earmarks")
+        call(server, "/api/_fake/tap", "POST", {"kind": 1})             # a tap, then its release: not a hold
+        call(server, "/api/_fake/tap", "POST", {"kind": 5})
+        time.sleep(1.4)
+        assert len(call(server, "/api/day")["earmarks"]) == marks0 + 1, "single tap set to nothing"
+    finally:
+        call(server, "/api/settings", "PUT", {"hold_action": "none", "tap_action": "earmark"})
+
+
 def test_earmarked_moment_shows_in_the_conversation(page: Page, server):
     sid = next(x["id"] for x in call(server, "/api/sessions")
                if "vendor contract" in json.dumps(call(server, f"/api/sessions/{x['id']}")))
@@ -666,16 +684,17 @@ def test_phone_changes_the_pendant_settings(server):
     before = call(server, "/api/settings")["config"]
     try:
         st, r = _app_call(server, "/api/app/settings", tok, body={"led_brightness": 140, "mic_gain": 5, "haptics": False,
-                                                                 "single_tap_earmark": False, "openai_key": "nope"})
+                                                                 "tap_action": "none", "hold_action": "earmark", "openai_key": "nope"})
         assert st == 200 and r["settings"]["led_brightness"] == 100 and r["settings"]["haptics"] is False
         cfg = call(server, "/api/settings")["config"]
-        assert cfg["mic_gain"] == 5 and cfg["single_tap_earmark"] is False and cfg["double_tap_pause"] is True
+        assert cfg["mic_gain"] == 5 and cfg["tap_action"] == "none" and cfg["double_tap_action"] == "pause" and cfg["hold_action"] == "earmark"
         assert cfg["openai_key"] == before["openai_key"], "only the pendant's settings can be changed from the phone"
         st, r = _app_call(server, "/api/app/heartbeat", tok, body={})
         assert r["settings"]["mic_gain"] == 5
         assert _app_call(server, "/api/app/settings", tok, body={"mic_gain": "loud"})[0] == 400
+        assert _app_call(server, "/api/app/settings", tok, body={"hold_action": "explode"})[0] == 400
     finally:
-        call(server, "/api/settings", "PUT", {k: before[k] for k in ("led_brightness", "mic_gain", "haptics", "single_tap_earmark")})
+        call(server, "/api/settings", "PUT", {k: before[k] for k in ("led_brightness", "mic_gain", "haptics", "tap_action", "hold_action")})
 
 
 def test_phone_forwards_the_pendants_own_memory(server):

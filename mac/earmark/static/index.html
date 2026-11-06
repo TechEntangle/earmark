@@ -1105,6 +1105,7 @@ const PROVIDERS = [
 async function viewSettings(section) {
   const S = await api('/api/settings'), c = S.config;
   const sw = (id, on) => `<label class="switch ctl"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}><span></span></label>`;
+  const act = (id, v) => `<select id="${id}" class="ctl">${[['earmark', 'Earmark'], ['pause', 'Pause / resume'], ['none', 'Nothing']].map(([x, l]) => `<option value="${x}" ${x === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   const f = (lab, hint, ctl) => `<div class="field"><div class="lab">${lab}</div>${ctl}<div class="hint">${hint}</div></div>`;
   $('#main').innerHTML = `<div class="page">
     <div class="head"><div><h1>Settings</h1></div></div>
@@ -1113,8 +1114,9 @@ async function viewSettings(section) {
       <form id="setForm">
         <section class="set-sec" id="s-pendant"><h2>Pendant</h2><p>How the pendant behaves while it is connected to this Mac.</p>
           ${f('Connect automatically', 'Earmark connects whenever the pendant is near this Mac.', sw('auto_sync', c.auto_sync))}
-          ${f('Double-tap to pause', 'Double-tap the pendant to stop recording; the light turns off. Double-tap again to resume.', sw('double_tap_pause', c.double_tap_pause))}
-          ${f('Single tap to earmark', 'Tap once to mark a moment as important. Say “remind me to…” after the tap and it becomes a task.', sw('single_tap_earmark', c.single_tap_earmark))}
+          ${f('Single tap', 'Earmark marks the moment as important; say “remind me to…” after it and it becomes a task.', act('tap_action', c.tap_action))}
+          ${f('Double tap', 'Pause stops recording and turns the light off; do it again to resume.', act('double_tap_action', c.double_tap_action))}
+          ${f('Press and hold', 'Hold about a second, then let go. Holding 3 seconds still turns the pendant off.', act('hold_action', c.hold_action))}
           ${f('Vibrate to confirm', 'One medium buzz when a moment is earmarked, one long buzz when paused, three short when recording again. Useful with the light off.', sw('haptics', c.haptics))}
           ${f('Light brightness', '0% turns the light off. While paused it is always off.', `<div class="range ctl"><input type="range" id="led_brightness" min="0" max="100" step="5" value="${c.led_brightness}"><output id="ledOut" class="num">${c.led_brightness}%</output></div>`)}
           ${f('Microphone level', ST && ST.pendant.mic_gain != null ? `The pendant is currently at level ${ST.pendant.mic_gain}.` : 'Read from the pendant when it connects.', `<select id="mic_gain" class="ctl">${[['-1', 'Leave as is'], ['0', '0 (muted)'], ...[1,2,3,4,5,6,7].map(x => [String(x), String(x)]), ['8', '8 (loudest)']].map(([v, l]) => `<option value="${v}" ${+v === c.mic_gain ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}
@@ -1174,7 +1176,7 @@ async function viewSettings(section) {
   $('#setForm').onsubmit = async e => {
     e.preventDefault();
     const v = id => $('#' + id) ? $('#' + id).value : undefined, ch = id => $('#' + id).checked;
-    const body = {auto_sync: ch('auto_sync'), double_tap_pause: ch('double_tap_pause'), single_tap_earmark: ch('single_tap_earmark'), haptics: ch('haptics'), led_brightness: v('led_brightness'), mic_gain: v('mic_gain'),
+    const body = {auto_sync: ch('auto_sync'), tap_action: v('tap_action'), double_tap_action: v('double_tap_action'), hold_action: v('hold_action'), haptics: ch('haptics'), led_brightness: v('led_brightness'), mic_gain: v('mic_gain'),
       min_speech_seconds: ch('skip_noise') ? 3 : 0, intel_provider: provider, engine: v('engine'), translate: ch('translate'),
       whisper_model: v('whisper_model'), language: v('language'), stay_connected: v('conn_mode') === 'stay',
       poll_seconds: v('conn_mode') === 'stay' ? 20 : 300, session_gap_seconds: v('session_gap_seconds'), identify_speakers: ch('identify_speakers')};
