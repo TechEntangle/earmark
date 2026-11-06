@@ -166,6 +166,8 @@ class EarmarkAudio {
   static Future<PlayerState> stop() async => PlayerState.from(await _ch.invokeMethod('stop'));
   static Future<PlayerState> seek(double at) async => PlayerState.from(await _ch.invokeMethod('seek', {'at': at}));
   static Future<PlayerState> state() async => PlayerState.from(await _ch.invokeMethod('state'));
+  /// Playback speed (pitch kept): 1, 1.25, 1.5, 2.
+  static Future<PlayerState> speed(double x) async => PlayerState.from(await _ch.invokeMethod('speed', {'speed': x}));
 }
 
 class SpeakerInfo {

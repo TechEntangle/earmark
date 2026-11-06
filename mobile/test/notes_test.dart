@@ -73,6 +73,11 @@ class FakeAudio extends AudioBackend {
   Future<PlayerState> stop() async => const PlayerState();
   @override
   Future<PlayerState> seek(double at) async => PlayerState(playing: _playing, position: _pos = at, duration: 80);
+  @override
+  Future<PlayerState> speed(double x) async {
+    calls.add('speed $x');
+    return PlayerState(playing: _playing, position: _pos, duration: 80);
+  }
 }
 
 class MemConfig extends ConfigStore {

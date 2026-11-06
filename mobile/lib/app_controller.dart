@@ -682,8 +682,23 @@ class EarmarkController extends ChangeNotifier {
     final ix = askIndex, cs = convs;
     if (ix == null || cs == null) return AskAnswer(question, null, const [], const []);
     await updateAskIndex(limit: 50);
-    final qv = (await asrEngine.embed([question])).firstOrNull ?? const <double>[];
-    final hits = ix.search(question, qv);
+    var qv = const <double>[];
+    try {
+      qv = (await asrEngine.embed([question])).firstOrNull ?? const <double>[];
+    } catch (_) {}
+    var hits = ix.search(question, qv);
+    // "today", "yesterday", "on Monday", "this week": the conversations of that time too
+    final span = askSpan(question, DateTime.now());
+    if (span != null) {
+      final seen = {for (final (p, _) in hits) '${p.conv}@${p.at}'};
+      final timed = [
+        for (final p in ix.during(cs.all, span.$1.millisecondsSinceEpoch / 1000, span.$2.millisecondsSinceEpoch / 1000))
+          if (seen.add('${p.conv}@${p.at}')) (p, 1.0),
+      ];
+      final inSpan = {for (final (p, _) in timed) p.conv};
+      hits = [...timed, ...hits.where((h) => inSpan.contains(h.$1.conv))].take(10).toList();
+      if (timed.isEmpty) hits = [];
+    }
     if (hits.isEmpty) return AskAnswer(question, null, const [], const []);
     if (!notesOn) return AskAnswer(question, null, hits, const []);
     final excerpts = [

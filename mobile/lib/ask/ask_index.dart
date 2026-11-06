@@ -143,14 +143,24 @@ class AskIndex {
       final sig = signature(c);
       if (indexed[c.id] == sig) continue;
       final ps = passagesOf(c, heard);
-      final vecs = ps.isEmpty ? <List<double>>[] : await embed([for (final p in ps) p.text]);
+      var vecs = <List<double>>[];
+      if (ps.isNotEmpty) {
+        try {
+          vecs = await embed([for (final p in ps) p.text]);
+        } catch (_) {/* words only */}
+      }
       _drop(c.id);
-      for (var k = 0; k < ps.length && k < vecs.length; k++) {
-        if (vecs[k].isEmpty) continue;
-        if (dim == 0) dim = vecs[k].length;
-        if (vecs[k].length != dim) continue;
+      for (var k = 0; k < ps.length; k++) {
+        // without a vector (the phone's sentence model isn't available) a passage is still found by its words
+        final v = k < vecs.length ? vecs[k] : const <double>[];
+        if (v.isNotEmpty && dim == 0) {
+          dim = v.length;
+          for (var i = 0; i < vectors.length; i++) {
+            vectors[i] = Float32List(dim);
+          }
+        }
         passages.add(ps[k]);
-        vectors.add(Float32List.fromList(_unit(vecs[k])));
+        vectors.add(v.isNotEmpty && v.length == dim ? Float32List.fromList(_unit(v)) : Float32List(dim));
       }
       indexed[c.id] = sig;
       done++;
@@ -180,6 +190,18 @@ class AskIndex {
     return n == 0 ? v : [for (final x in v) x / n];
   }
 
+  /// The passages of conversations between [from] and [to] (epoch seconds): notes first.
+  List<Passage> during(List<Conversation> convs, double from, double to, {int k = 10}) {
+    final inside = {for (final c in convs) if (c.start < to && c.end > from) c.id};
+    final ps = passages.where((p) => inside.contains(p.conv)).toList()
+      ..sort((a, b) => (a.kind == 'notes' ? 0 : 1).compareTo(b.kind == 'notes' ? 0 : 1));
+    final per = <int, int>{};
+    return [
+      for (final p in ps)
+        if ((per[p.conv] = (per[p.conv] ?? 0) + 1) <= 2) p,
+    ].take(k).toList();
+  }
+
   /// The best passages for a question: meaning (cosine) and words together.
   List<(Passage, double)> search(String question, List<double> qvec, {int k = 8}) {
     final q = qvec.isEmpty || qvec.length != dim ? null : _unit(qvec);
@@ -197,7 +219,7 @@ class AskIndex {
     final scored = <(Passage, double)>[];
     for (var i = 0; i < passages.length; i++) {
       var cos = 0.0;
-      if (q != null) {
+      if (q != null && vectors[i].length == dim) {
         final v = vectors[i];
         for (var d = 0; d < dim; d++) {
           cos += q[d] * v[d];
@@ -228,4 +250,29 @@ class AskIndex {
     }
     return out;
   }
+}
+
+/// The stretch of time a question is about, if it names one ("today", "yesterday", "on Monday",
+/// "this week", "last week"): (from, to).
+(DateTime, DateTime)? askSpan(String question, DateTime now) {
+  final q = question.toLowerCase();
+  final today = DateTime(now.year, now.month, now.day);
+  DateTime day(int back) => today.subtract(Duration(days: back));
+  if (RegExp(r'\b(today|this morning|this afternoon|tonight|this evening)\b').hasMatch(q)) return (today, now);
+  if (RegExp(r'\byesterday\b').hasMatch(q)) return (day(1), today);
+  if (RegExp(r'\bthis week\b').hasMatch(q)) return (day(today.weekday - 1), now);
+  if (RegExp(r'\blast week\b').hasMatch(q)) {
+    final mon = day(today.weekday - 1);
+    return (mon.subtract(const Duration(days: 7)), mon);
+  }
+  const names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  for (var i = 0; i < 7; i++) {
+    if (RegExp('\\b(on |last )?${names[i]}\\b').hasMatch(q)) {
+      var back = (today.weekday - (i + 1)) % 7;
+      if (back == 0) back = 7; // "on Monday" said on a Monday: last week's
+      final d = day(back);
+      return (d, d.add(const Duration(days: 1)));
+    }
+  }
+  return null;
 }

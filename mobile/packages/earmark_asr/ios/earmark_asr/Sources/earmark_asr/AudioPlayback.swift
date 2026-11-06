@@ -7,6 +7,7 @@
 //   play {path, at?}   plays the file (from [at] seconds)
 //   pause / stop
 //   seek {at}
+//   speed {speed}   1, 1.25, 1.5, 2 (pitch kept)
 //   state → {playing, position, duration, path}
 import AVFoundation
 import Flutter
@@ -23,6 +24,7 @@ final class AudioChannel: NSObject, AVAudioPlayerDelegate {
     private static var retained: AudioChannel?
     private var player: AVAudioPlayer?
     private var path: String?
+    private var speed: Float = 1
 
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let args = call.arguments as? [String: Any] ?? [:]
@@ -54,10 +56,14 @@ final class AudioChannel: NSObject, AVAudioPlayerDelegate {
                 try AVAudioSession.sharedInstance().setActive(true)
                 if player == nil || path != p {
                     player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: p))
+                    player?.enableRate = true
                     player?.delegate = self
                     player?.prepareToPlay()
                     path = p
                 }
+                player?.enableRate = true
+                player?.rate = Float((args["speed"] as? NSNumber)?.doubleValue ?? Double(speed))
+                speed = player?.rate ?? 1
                 if let at = (args["at"] as? NSNumber)?.doubleValue {
                     player?.currentTime = max(0, min(at, (player?.duration ?? 0) - 0.05))
                 }
@@ -80,6 +86,13 @@ final class AudioChannel: NSObject, AVAudioPlayerDelegate {
                 pl.currentTime = max(0, min(at, pl.duration - 0.05))
             }
             result(state())
+        case "speed":
+            speed = Float((args["speed"] as? NSNumber)?.doubleValue ?? 1)
+            if let pl = player {
+                pl.enableRate = true
+                pl.rate = speed
+            }
+            result(state())
         case "state":
             result(state())
         default:
@@ -93,6 +106,8 @@ final class AudioChannel: NSObject, AVAudioPlayerDelegate {
             "position": player?.currentTime ?? 0,
             "duration": player?.duration ?? 0,
             "path": path ?? "",
+            "speed": Double(speed),
+            "fileRate": player?.format.sampleRate ?? 0,
         ]
     }
 
@@ -115,32 +130,31 @@ final class AudioChannel: NSObject, AVAudioPlayerDelegate {
         return out
     }
 
-    /// 16-bit PCM WAV, 16 kHz mono.
+    /// 16-bit PCM WAV, 16 kHz mono, written by AVAudioFile (so the header is exactly what iOS expects).
     static func writeWav(paths: [String], offsets: [Double], out: String) throws -> Double {
-        let rate = OpusChunk.sampleRate
-        let samples: [Int16] = Self.samples(paths: paths, offsets: offsets).map { Int16(max(-1, min(1, $0)) * 32767) }
-        var data = Data()
-        func u32(_ v: UInt32) { var x = v.littleEndian; data.append(Data(bytes: &x, count: 4)) }
-        func u16(_ v: UInt16) { var x = v.littleEndian; data.append(Data(bytes: &x, count: 2)) }
-        let bytes = UInt32(samples.count * 2)
-        data.append("RIFF".data(using: .ascii)!)
-        u32(36 + bytes)
-        data.append("WAVEfmt ".data(using: .ascii)!)
-        u32(16)
-        u16(1)
-        u16(1)
-        u32(UInt32(rate))
-        u32(UInt32(rate * 2))
-        u16(2)
-        u16(16)
-        data.append("data".data(using: .ascii)!)
-        u32(bytes)
-        samples.withUnsafeBufferPointer { b in
-            data.append(b.baseAddress!.withMemoryRebound(to: UInt8.self, capacity: samples.count * 2) {
-                Data(bytes: $0, count: samples.count * 2)
-            })
+        let rate = Double(OpusChunk.sampleRate)
+        let samples = Self.samples(paths: paths, offsets: offsets)
+        let url = URL(fileURLWithPath: out)
+        try? FileManager.default.removeItem(at: url)
+        let settings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,
+        ]
+        guard let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false)
+        else { throw NSError(domain: "earmark", code: 2, userInfo: [NSLocalizedDescriptionKey: "no audio format"]) }
+        let file = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let block = 16000 * 30
+        var i = 0
+        while i < samples.count {
+            let n = min(block, samples.count - i)
+            guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(n)) else { break }
+            buf.frameLength = AVAudioFrameCount(n)
+            samples.withUnsafeBufferPointer { src in
+                buf.floatChannelData![0].update(from: src.baseAddress! + i, count: n)
+            }
+            try file.write(from: buf)
+            i += n
         }
-        try data.write(to: URL(fileURLWithPath: out), options: .atomic)
-        return Double(samples.count) / Double(rate)
+        return Double(samples.count) / rate
     }
 }

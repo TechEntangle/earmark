@@ -19,6 +19,7 @@ class AudioBackend {
   Future<PlayerState> stop() => EarmarkAudio.stop();
   Future<PlayerState> seek(double at) => EarmarkAudio.seek(at);
   Future<PlayerState> state() => EarmarkAudio.state();
+  Future<PlayerState> speed(double x) => EarmarkAudio.speed(x);
 }
 
 class ConvPlayer extends ChangeNotifier {
@@ -31,6 +32,18 @@ class ConvPlayer extends ChangeNotifier {
   bool preparing = false;
   bool playing = false;
   double position = 0, duration = 0;
+  /// playback speed (pitch kept)
+  double speed = 1;
+  static const speeds = [1.0, 1.25, 1.5, 2.0];
+
+  /// The next speed, round the list.
+  Future<void> cycleSpeed() async {
+    speed = speeds[(speeds.indexOf(speed) + 1) % speeds.length];
+    notifyListeners();
+    try {
+      _apply(await audio.speed(speed));
+    } catch (_) {}
+  }
   String? error;
   Timer? _poll;
 
@@ -56,7 +69,7 @@ class ConvPlayer extends ChangeNotifier {
       } catch (_) {
         dir = Directory.systemTemp; // tests
       }
-      final out = '${dir.path}/conversation_${v.id}_${paths.length}.wav';
+      final out = '${dir.path}/conversation_${v.id}_${paths.length}_v2.wav';
       if (!File(out).existsSync()) {
         duration = await audio.prepare(paths, offsets, out);
       }
@@ -153,6 +166,13 @@ class PlayerBar extends StatelessWidget {
               ),
               Text('${_mmss(p.position)} / ${_mmss(dur)}',
                   style: TextStyle(fontSize: 12.5, color: t.ink2, fontFeatures: const [FontFeature.tabularFigures()])),
+              TextButton(
+                key: const Key('speedBtn'),
+                style: TextButton.styleFrom(minimumSize: const Size(44, 36), padding: const EdgeInsets.symmetric(horizontal: 6)),
+                onPressed: p.cycleSpeed,
+                child: Text('${p.speed == p.speed.roundToDouble() ? p.speed.round() : p.speed}×',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.ink2)),
+              ),
             ]),
           );
         },

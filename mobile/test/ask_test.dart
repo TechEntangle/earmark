@@ -100,4 +100,40 @@ void main() {
     expect(find.byType(PhoneConversationScreen), findsOneWidget);
     t.view.resetPhysicalSize();
   });
+
+  test('without the sentence model, Ask still finds passages by their words', () async {
+    final (c, _) = setUpController();
+    final noModel = _NoEmbed();
+    final c2 = EarmarkController(config: MemConfig(), pendant: PendantService(), asr: noModel)
+      ..heard = c.heard
+      ..convs = c.convs
+      ..askIndex = AskIndex(Directory.systemTemp.createTempSync('ask2'))
+      ..asr = const AsrStatus('ready', onDisk: true)
+      ..notesState = 'available';
+    final a = await c2.ask('When will the vendor contract arrive?');
+    expect(a.hits, isNotEmpty);
+    expect(a.hits.first.$1.conv, 1);
+    expect(c2.askIndex!.passages, isNotEmpty);
+    // the model shows up later: vectors fill in on the next change, nothing breaks
+    expect(AskIndex(c2.askIndex!.dir).passages.length, c2.askIndex!.passages.length);
+  });
+
+  test('a question about a day uses that day\'s conversations', () async {
+    final now = DateTime(2026, 11, 7, 9); // Saturday morning
+    expect(askSpan('Summarise yesterday', now), (DateTime(2026, 11, 6), DateTime(2026, 11, 7)));
+    expect(askSpan('what happened today', now)!.$1, DateTime(2026, 11, 7));
+    expect(askSpan('what did we say on Thursday', now), (DateTime(2026, 11, 5), DateTime(2026, 11, 6)));
+    expect(askSpan('this week', now)!.$1, DateTime(2026, 11, 2));
+    expect(askSpan('budget', now), isNull);
+    final (c, _) = setUpController();
+    await c.updateAskIndex(limit: 50);
+    final ps = c.askIndex!.during(c.convs!.all, t0 - 60, t0 + 86400);
+    expect(ps.first.kind, 'notes');
+    expect(ps.map((p) => p.conv).toSet(), {1, 5});
+  });
+}
+
+class _NoEmbed extends AskEngine {
+  @override
+  Future<List<List<double>>> embed(List<String> texts) async => [for (final _ in texts) <double>[]];
 }
