@@ -119,8 +119,10 @@ class _Hero extends StatelessWidget {
         ],
       Home.paused => [
           _title(context, 'Paused', dot: t.due),
-          if (c.pausedSince != null) _timer(context, DateTime.now().difference(c.pausedSince!).inSeconds, dim: true),
-          _sub(context, 'Nothing is recorded'),
+          const SizedBox(height: 6),
+          _sub(context, c.pausedSince != null
+              ? 'Since ${DateFormat.Hm().format(c.pausedSince!)} · nothing is recorded'
+              : 'Nothing is recorded'),
           _pair(context, _resumeBtn(context), _earmarkBtn(context, enabled: false)),
         ],
       Home.onMac => [

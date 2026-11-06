@@ -134,8 +134,11 @@ void main() {
     await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/home_recording.png'));
 
     await t.runAsync(c.togglePause);
+    c.pausedSince = DateTime(2026, 11, 6, 11, 30); // fixed, for the golden
     await t.pump();
     expect(find.text('Paused'), findsOneWidget);
+    expect(find.textContaining('Since 11:30'), findsOneWidget);
+    expect(find.text('0:00'), findsNothing, reason: 'no counter while paused');
     expect(p.buzzes.last.single.$1, 3, reason: 'one long vibration = paused');
     await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/home_paused.png'));
 
