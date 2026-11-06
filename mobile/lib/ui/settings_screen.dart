@@ -87,10 +87,10 @@ class SettingsScreen extends StatelessWidget {
                 shape: const Border(),
                 childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 children: [
-                  _hint(context, 'Single tap', 'Earmark this moment. Say what to remember right after: "remind me to…"'),
-                  _hint(context, 'Double tap', 'Pause or resume recording'),
-                  _hint(context, 'Vibrations', 'three short = recording, one long = paused, one medium = earmarked'),
-                  _hint(context, 'Hold 3 s', 'Power off (press to turn back on)'),
+                  pendantHint(context, 'Single tap', 'Earmark this moment. Say what to remember right after: "remind me to…"'),
+                  pendantHint(context, 'Double tap', 'Pause or resume recording'),
+                  pendantHint(context, 'Vibrations', 'three short = recording, one long = paused, one medium = earmarked'),
+                  pendantHint(context, 'Hold 3 s', 'Power off (press to turn back on)'),
                 ],
               ),
               const Divider(),
@@ -107,7 +107,7 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-Widget _hint(BuildContext context, String a, String b) => Padding(
+Widget pendantHint(BuildContext context, String a, String b) => Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(width: 92, child: Text(a, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: context.t.ink))),

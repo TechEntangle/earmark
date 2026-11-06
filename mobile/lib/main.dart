@@ -140,12 +140,15 @@ class _ShellState extends State<Shell> {
         onDestinationSelected: (v) => setState(() => i = v),
         destinations: [
           NavigationDestination(
-            icon: Icon(c.pendant.connected && !c.paused ? Icons.graphic_eq : Icons.radio_button_unchecked),
-            label: c.paused ? 'Paused' : (c.pendant.connected ? 'Recording' : 'Pendant'),
+            icon: Icon(c.pendant.connected && !c.paused ? Icons.radio_button_checked : Icons.radio_button_unchecked),
+            label: 'Now',
           ),
           const NavigationDestination(icon: Icon(Icons.wb_sunny_outlined), label: 'Today'),
-          const NavigationDestination(icon: Icon(Icons.check_box_outlined), label: 'Tasks'),
-          const NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: 'Conversations'),
+          NavigationDestination(
+            icon: Badge(isLabelVisible: c.openTasks > 0, label: Text('${c.openTasks}'), child: const Icon(Icons.check_box_outlined)),
+            label: 'Tasks',
+          ),
+          const NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: 'Talks'),
         ],
       ),
     );

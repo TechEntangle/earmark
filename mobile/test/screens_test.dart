@@ -94,45 +94,85 @@ void main() {
     await expectLater(find.byType(PairScreen), matchesGoldenFile('goldens/pair.png'));
   });
 
-  testWidgets('now screen: recording, then pause from the button vibrates', (t) async {
+  testWidgets('home: recording, paused, offline, on the Mac, moving, connections', (t) async {
     t.view.physicalSize = const Size(1179, 2556);
     t.view.devicePixelRatio = 3;
     final p = FakePendant();
     final c = controller(p)..link = Link.online;
     final now = DateTime(2026, 11, 6, 11, 30).millisecondsSinceEpoch / 1000;
+    var macHas = false;
     c.api = Api(Uri.parse('https://mac.tail1234.ts.net'), 'tok', client: MockClient((r) async {
-      if (r.url.path != '/api/sessions') return http.Response('{}', 404);
-      return http.Response(jsonEncode([
-        {'id': 3, 'started_at': now - 120, 'duration_s': 95, 'status': 'pending', 'source': 'phone'},
-        {'id': 2, 'started_at': now - 1500, 'duration_s': 342, 'status': 'done', 'title': 'Excel add-ins migration and patching plan',
-         'gist': 'Agreed to stage the add-in rollout behind the patch window and test on two desks first.', 'task_count': 4, 'speakers': ['Me', 'Sam']},
-        {'id': 1, 'started_at': now - 4000, 'duration_s': 600, 'status': 'done', 'title': 'Security incident response', 'task_count': 3},
-        {'id': 0, 'started_at': now - 9000, 'duration_s': 60, 'status': 'done', 'title': 'Older'},
-      ]), 200, headers: {'content-type': 'application/json'});
+      switch (r.url.path) {
+        case '/api/sessions':
+          return http.Response(jsonEncode([
+            {'id': 3, 'started_at': now - 120, 'duration_s': 95, 'status': 'queued', 'source': 'phone'},
+            {'id': 2, 'started_at': now - 1500, 'duration_s': 342, 'status': 'done', 'title': 'Excel add-ins migration and patching plan', 'task_count': 4},
+            {'id': 1, 'started_at': now - 4000, 'duration_s': 600, 'status': 'done', 'title': 'Security incident response', 'task_count': 3},
+            {'id': 0, 'started_at': now - 9000, 'duration_s': 60, 'status': 'done', 'title': 'Older'},
+          ]), 200, headers: {'content-type': 'application/json'});
+        case '/api/status':
+          return http.Response(jsonEncode({'paused': false, 'open_seconds': 2530, 'pendant': {'battery': 82},
+              'tasks': {'open': 7}, 'counts': {'done': 40, 'queued': 1}}), 200);
+        case '/api/app/heartbeat':
+          return http.Response(jsonEncode({'ok': true, 'paused': false, 'settings': {}, 'last_seq': 0, 'mac_has_pendant': macHas}), 200);
+      }
+      return http.Response('{}', 200);
     }));
     await p.start();
-    await t.runAsync(() async {
-      await t.pumpWidget(wrap(NowScreen(c: c), b: Brightness.dark));
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    });
-    await t.pump();
+    Future<void> settle() async {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await t.pump();
+    }
+
+    await t.runAsync(() async => t.pumpWidget(wrap(NowScreen(c: c), b: Brightness.dark)));
+    await settle();
     expect(find.text('Excel add-ins migration and patching plan'), findsOneWidget);
     expect(find.text('Older'), findsNothing, reason: 'only the latest three');
     expect(find.text('Recording'), findsOneWidget);
+    expect(find.byKey(const Key('battery')), findsOneWidget);
     expect(find.text('82%'), findsOneWidget);
-    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/now_recording_dark.png'));
-    await t.runAsync(() async {
-      await c.togglePause();
-    });
+    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/home_recording.png'));
+
+    await t.runAsync(c.togglePause);
     await t.pump();
     expect(find.text('Paused'), findsOneWidget);
     expect(p.buzzes.last.single.$1, 3, reason: 'one long vibration = paused');
+    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/home_paused.png'));
+
+    await t.runAsync(c.togglePause);
+    p.battery = 14;
     c.link = Link.offline;
-    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
-    c.notifyListeners();
+    p.notifyListeners();
     await t.pump();
-    expect(find.text('Mac not reachable'), findsOneWidget);
-    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/now_paused_offline.png'));
+    expect(find.textContaining('Mac not reachable'), findsOneWidget);
+    expect(find.byKey(const Key('lowBattery')), findsOneWidget);
+    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/home_offline_low.png'));
+
+    // the Mac has the pendant: the big action is "Use this iPhone"
+    p.battery = null;
+    p.state = PendantState.connecting;
+    c.link = Link.online;
+    c.macHasPendant = macHas = true;
+    await t.runAsync(c.refreshStatus);
+    await t.pump();
+    expect(find.text('Recording on Mac'), findsOneWidget);
+    expect(find.text('82%'), findsOneWidget, reason: "the Mac's pendant battery");
+    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/home_on_mac.png'));
+
+    macHas = false; // the Mac lets go as soon as it hears the claim
+    await t.tap(find.byKey(const Key('takeBtn')));
+    await settle();
+    expect(find.text('Moving to iPhone'), findsOneWidget);
+    expect(p.reconnects, greaterThanOrEqualTo(1));
+    await expectLater(find.byType(NowScreen), matchesGoldenFile('goldens/home_moving.png'));
+    c.cancelTakeover();
+    await settle();
+
+    await t.tap(find.byKey(const Key('statusChain')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 600));
+    expect(find.text('Connections'), findsOneWidget);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/home_connections.png'));
     t.view.resetPhysicalSize();
   });
 

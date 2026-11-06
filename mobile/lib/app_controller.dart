@@ -47,6 +47,56 @@ class EarmarkController extends ChangeNotifier {
   bool get takingOver => _takeoverBeat != null;
   /// The last take-over didn't reach the pendant (shown until the next attempt).
   bool takeoverFailed = false;
+  DateTime? pausedSince; // when recording was paused (unknown after an app restart)
+  DateTime? _statusAt; // when [macStatus] was fetched
+
+  // ---- what the Mac reports (from /api/status), for when the Mac has the pendant
+  bool get macPaused => macStatus?['paused'] == true;
+  int? get macBattery {
+    final p = macStatus?['pendant'];
+    if (p is Map && p['battery'] is int) return p['battery'] as int;
+    final b = macStatus?['battery'];
+    return b is Map && b['pct'] is int ? b['pct'] as int : null;
+  }
+
+  /// The Mac's current stretch of recording, counted on from when it last told us.
+  double get macOpenSeconds {
+    final s = (macStatus?['open_seconds'] as num?)?.toDouble() ?? 0;
+    if (s <= 0 || macPaused || _statusAt == null) return s;
+    return s + DateTime.now().difference(_statusAt!).inMilliseconds / 1000;
+  }
+
+  int get openTasks => ((macStatus?['tasks'] as Map?)?['open'] as num?)?.toInt() ?? 0;
+
+  /// Conversations the Mac hasn't finished turning into text yet.
+  int get transcribing {
+    final c = macStatus?['counts'];
+    if (c is! Map) return 0;
+    return c.entries.where((e) => e.key != 'done' && e.key != 'error').fold(0, (n, e) => n + ((e.value as num?)?.toInt() ?? 0));
+  }
+
+  /// The pendant's battery, whoever holds it.
+  int? get battery => pendant.connected ? pendant.battery : (macHasPendant ? macBattery : pendant.battery);
+
+  /// Stop "Use this iPhone" (the Mac keeps the pendant).
+  void cancelTakeover() {
+    _takeoverBeat?.cancel();
+    _takeoverBeat = null;
+    _takeoverAsked = null;
+    takeoverFailed = false;
+    notifyListeners();
+    unawaited(heartbeat());
+  }
+
+  Future<void> refreshStatus() async {
+    final a = api;
+    if (a == null) return;
+    try {
+      macStatus = await a.status();
+      _statusAt = DateTime.now();
+      notifyListeners();
+    } catch (_) {}
+  }
 
   /// Ask the Mac to step back. Only when this phone had the pendant moments ago, or the user
   /// asked: a phone without the pendant nearby (or an emulator) must not stop the Mac recording.
@@ -214,6 +264,7 @@ class EarmarkController extends ChangeNotifier {
 
   Future<void> togglePause() async {
     paused = !paused;
+    pausedSince = paused ? DateTime.now() : null;
     await config.savePaused(paused);
     if (paused) store?.close();
     notifyListeners();
@@ -300,7 +351,7 @@ class EarmarkController extends ChangeNotifier {
         'session_seconds': store?.openSeconds ?? 0,
         'queued_seconds': store?.pendingSeconds() ?? 0,
         'app_version': appVersion,
-        'pendant_error': pendant.connected ? null : pendant.lastError,
+        'pendant_error': pendant.connected || !_wantsPendant ? null : pendant.lastError,
       });
       link = Link.online;
       linkError = null;
@@ -313,6 +364,7 @@ class EarmarkController extends ChangeNotifier {
       final macPaused = r['paused'] == true;
       if (macPaused != paused && !_events.any((e) => e['type'] == 'pause' || e['type'] == 'resume')) {
         paused = macPaused;
+        pausedSince = paused ? DateTime.now() : null;
         await config.savePaused(paused);
         if (paused) store?.close();
         unawaited(pendant.buzz(paused ? Buzz.paused : Buzz.recording));
@@ -321,6 +373,7 @@ class EarmarkController extends ChangeNotifier {
       notifyListeners();
       unawaited(_sendEvents());
       unawaited(pumpUploads());
+      if (_statusAt == null || DateTime.now().difference(_statusAt!) > const Duration(seconds: 10)) unawaited(refreshStatus());
     } catch (e) {
       _onApiError(e);
     }
