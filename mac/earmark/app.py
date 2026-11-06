@@ -34,6 +34,7 @@ from . import speakers as SPK
 from . import phone as PH
 from . import appsync as AS
 from . import phonetext as PT
+from . import vocab as VOC
 
 FAKE = os.environ.get("EARMARK_FAKE_PENDANT") == "1"
 if FAKE:
@@ -81,6 +82,7 @@ DEFAULT_CONFIG = {
     "anthropic_key": "",
     "anthropic_model": "claude-haiku-5-5",
     "identify_speakers": True,    # split conversations by voice and recognise people you have named
+    "vocabulary": "",             # names and terms, one per line ("rack bank = RAKBANK"); see vocab.py
     "lan_access": False,          # also listen on this Mac's Wi-Fi address (phones must still be paired)      # sessions with less speech than this are deleted as noise
 }
 
@@ -731,6 +733,9 @@ async def process_queue(cfg: dict):
                 _delete_session(sid)
                 S.say(f"{label}: no speech found, removed")
                 continue
+            if cfg.get("vocabulary"):
+                tr["segments"] = VOC.fix_segments(tr["segments"], cfg["vocabulary"])
+                tr["text"] = " ".join(g["text"] for g in tr["segments"])
             summary = None
             title = _title_from(summary, tr["text"], row["started_at"])
             note = PL.write_note(NOTES_DIR, title, row["started_at"], row["duration_s"], summary, tr)
@@ -1003,7 +1008,7 @@ async def words_queue(cfg: dict):
             if not cur:
                 return True
             old = json.loads(cur["transcript_json"] or "[]")
-            new = tr["segments"]
+            new = VOC.fix_segments(tr["segments"], load_config().get("vocabulary", ""))
             if new:
                 # carry hand-made speaker fixes over by time; the speaker pass re-labels the rest
                 for g in new:
@@ -1385,7 +1390,7 @@ def api_app_heartbeat(request: Request, body: dict):
             "mac_has_pendant": bool(S.pd), "server_time": time.time()}
 
 
-_PENDANT_KEYS = ("led_brightness", "mic_gain", "tap_action", "double_tap_action", "hold_action", "haptics")
+_PENDANT_KEYS = ("led_brightness", "mic_gain", "tap_action", "double_tap_action", "hold_action", "haptics", "vocabulary")
 
 
 @app.post("/api/app/settings")
@@ -1402,6 +1407,8 @@ def api_app_settings(request: Request, body: dict):
             if k.endswith("_action"):
                 if v not in BUTTON_ACTIONS:
                     raise ValueError
+            elif k == "vocabulary":
+                v = str(v)[:5000]
             else:
                 v = bool(v) if isinstance(DEFAULT_CONFIG[k], bool) else int(float(v))
         except (TypeError, ValueError):

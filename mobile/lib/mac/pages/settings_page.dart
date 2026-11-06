@@ -183,6 +183,33 @@ class _SettingsPageState extends State<SettingsPage> {
               ]),
             ),
 
+            const SectionLabel('Names and terms'),
+            Panel(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('One per line. New transcripts are spelled this way and notes use them. Your iPhone uses the same list. '
+                    'For words the speech model gets wrong, write what it hears, then = and the right spelling.',
+                    style: tt.bodySmall),
+                const SizedBox(height: 10),
+                TextField(
+                  key: const Key('vocabulary'),
+                  controller: _ctl('vocabulary', c),
+                  minLines: 4,
+                  maxLines: 12,
+                  decoration: const InputDecoration(hintText: 'Rahul\nRAKBANK\nrack bank, rag bank = RAKBANK'),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 38)),
+                    onPressed: () => _set({'vocabulary': _ctl('vocabulary', c).text.trim()}),
+                    child: const Text('Save'),
+                  ),
+                ),
+              ]),
+            ),
+
             // ---------------------------------------------------------------- conversations
             const SectionLabel('Conversations'),
             Panel(

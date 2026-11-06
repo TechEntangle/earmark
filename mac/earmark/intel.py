@@ -385,7 +385,9 @@ def conversation_notes(cfg: dict, segments: list, started_at: int,
                        progress: Optional[Callable[[float, str], None]] = None, marks: Optional[list] = None) -> dict:
     when = datetime.fromtimestamp(started_at)
     text = _transcript_text(segments, marks)
-    head = _today_line(when) + "\n\nTranscript:\n"
+    from . import vocab as VOC
+    words = VOC.prompt_line(cfg.get("vocabulary", ""))
+    head = _today_line(when) + (" " + words if words else "") + "\n\nTranscript:\n"
     parts = _split(text, CHUNK_CHARS)
     if len(parts) == 1:
         if progress:

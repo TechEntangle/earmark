@@ -23,6 +23,7 @@ import 'ask/ask_index.dart';
 import 'notes/cloud.dart';
 import 'notes/conversations.dart';
 import 'notes/due.dart';
+import 'notes/vocab.dart';
 import 'notes/voices.dart';
 import 'transcribe/heard.dart';
 
@@ -99,6 +100,47 @@ class EarmarkController extends ChangeNotifier {
   /// Who writes notes and answers Ask: Apple's on-device model, or your own OpenAI / Anthropic key.
   AiProvider ai = AiProvider.apple;
   final Map<String, String> aiKeys = {}, aiModels = {};
+  /// Names and terms you use, spelled your way (shared with your Mac).
+  String vocabularyText = '';
+  Vocabulary vocabulary = Vocabulary.parse('');
+  bool _vocabDirty = false;
+
+  Future<void> setVocabulary(String text) async {
+    vocabularyText = text.trim();
+    vocabulary = Vocabulary.parse(vocabularyText);
+    _vocabDirty = true;
+    notifyListeners();
+    try {
+      await config.saveVocabulary(vocabularyText, dirty: true);
+    } catch (_) {}
+    await _pushVocabulary();
+  }
+
+  Future<void> _pushVocabulary() async {
+    final a = api;
+    if (a == null || !_vocabDirty) return;
+    final sent = vocabularyText;
+    try {
+      await a.pendantSettings({'vocabulary': sent});
+      if (sent != vocabularyText) return;
+      _vocabDirty = false;
+      try {
+        await config.saveVocabulary(sent);
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  Future<void> _takeMacVocabulary(Map<String, dynamic> m) async {
+    if (_vocabDirty) return _pushVocabulary();
+    final v = m['vocabulary'];
+    if (v is! String || v == vocabularyText) return;
+    vocabularyText = v;
+    vocabulary = Vocabulary.parse(v);
+    try {
+      await config.saveVocabulary(v);
+    } catch (_) {}
+  }
+
   /// your own silence length for a new conversation (seconds); null = your Mac's
   int? gapOverride;
   double get gapSeconds => (gapOverride ?? (macSettings['session_gap_seconds'] as num?) ?? 90).toDouble();
@@ -323,6 +365,10 @@ class EarmarkController extends ChangeNotifier {
       aiModels[p.name] = await config.aiModel(p.name);
     }
     gapOverride = await config.gapSeconds();
+    final (voc, vocDirty) = await config.vocabulary();
+    vocabularyText = voc;
+    vocabulary = Vocabulary.parse(voc);
+    _vocabDirty = vocDirty;
     final (savedPrefs, prefsDirty) = await config.pendantPrefs();
     prefs = savedPrefs;
     _prefsDirty = prefsDirty;
@@ -411,8 +457,8 @@ class EarmarkController extends ChangeNotifier {
         final prev = _asrPrev(c);
         try {
           final r = await asrEngine.transcribe(c.file.path, prev: prev?.path);
-          h.add(HeardChunk(c.seq, c.startSeconds, r.seconds, r.text, [for (final w in r.words) w.toJson()],
-              lang: r.language, checked: r.checked));
+          final (text, words) = vocabulary.fix(r.text, [for (final w in r.words) w.toJson()]);
+          h.add(HeardChunk(c.seq, c.startSeconds, r.seconds, text, words, lang: r.language, checked: r.checked));
           _keepAsPrev(c);
           notifyListeners();
         } catch (e) {
@@ -495,7 +541,8 @@ class EarmarkController extends ChangeNotifier {
     try {
       final when = next.startTime;
       final header = 'The recording started ${_weekday(when)} ${when.day}/${when.month}/${when.year} at '
-          '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}.';
+          '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}.'
+          '${vocabulary.isEmpty ? '' : ' ${vocabulary.promptLine}'}';
       final lines = Conversations.promptLines(next, h, earmarks);
       final model = cloud;
       final n = model != null ? await model.notes(lines, header: header) : await asrEngine.notes(lines, header: header);
@@ -1182,6 +1229,7 @@ class EarmarkController extends ChangeNotifier {
       linkError = null;
       macSettings = Map<String, dynamic>.from(r['settings'] as Map? ?? {});
       await _takeMacPrefs(macSettings);
+      await _takeMacVocabulary(macSettings);
       macHasPendant = r['mac_has_pendant'] == true;
       if (pendant.connected) _markHeld();
       final last = r['last_seq'];

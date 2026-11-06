@@ -53,6 +53,8 @@ class FakeConfig extends ConfigStore {
   Future<void> saveKeepDays(int d) async => m['keep'] = '$d';
   @override
   Future<void> savePendantPrefs(PendantPrefs p, {bool dirty = false}) async {}
+  @override
+  Future<void> saveVocabulary(String v, {bool dirty = false}) async => m['vocab'] = v;
 }
 
 /// A pendant that is "connected" without Bluetooth.

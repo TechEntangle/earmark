@@ -72,6 +72,18 @@ class SettingsScreen extends StatelessWidget {
                   value: c.transcribeHere,
                   onChanged: c.setTranscribeHere,
                 ),
+                const Divider(),
+                ListTile(
+                  key: const Key('vocabRow'),
+                  title: const Text('Names and terms'),
+                  subtitle: Text(
+                      c.vocabulary.isEmpty
+                          ? 'Teach Earmark how to spell the names and words you use.'
+                          : c.vocabulary.terms.take(5).join(', ') + (c.vocabulary.terms.length > 5 ? '…' : ''),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => VocabularyScreen(c: c))),
+                ),
                 if (c.transcribeHere) ...[
                   const Divider(),
                   ListTile(
@@ -422,6 +434,53 @@ class _StoragePanel extends StatelessWidget {
           subtitle: Text(size(text), style: tt.bodySmall),
         ),
       ]),
+    );
+  }
+}
+
+class VocabularyScreen extends StatefulWidget {
+  final EarmarkController c;
+  const VocabularyScreen({super.key, required this.c});
+  @override
+  State<VocabularyScreen> createState() => _VocabularyScreenState();
+}
+
+class _VocabularyScreenState extends State<VocabularyScreen> {
+  late final _t = TextEditingController(text: widget.c.vocabularyText);
+
+  @override
+  void dispose() {
+    _t.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+    return PopScope(
+      onPopInvokedWithResult: (_, _) {
+        if (_t.text.trim() != widget.c.vocabularyText) widget.c.setVocabulary(_t.text);
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Names and terms')),
+        body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
+          Text('One per line. Earmark fixes how they are written in new transcripts and uses them in notes. Your Mac uses the same list.',
+              style: TextStyle(fontSize: 13.5, height: 1.45, color: t.ink2)),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('vocabField'),
+            controller: _t,
+            minLines: 8,
+            maxLines: 20,
+            autocorrect: false,
+            decoration: const InputDecoration(hintText: 'Rahul\nRAKBANK\nrack bank, rag bank = RAKBANK'),
+          ),
+          const SizedBox(height: 12),
+          Text('A name on its own also fixes its capitals and split spellings ("rak bank" → RAKBANK). '
+              'For words the speech model gets wrong, write what it hears, then = and the right spelling.',
+              style: TextStyle(fontSize: 12.5, height: 1.4, color: t.ink3)),
+        ]),
+      ),
     );
   }
 }

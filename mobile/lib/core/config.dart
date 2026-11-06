@@ -85,6 +85,17 @@ class ConfigStore {
   Future<int> keepDays() async => int.tryParse(await _s.read(key: 'keep_days') ?? '') ?? 30;
   Future<void> saveKeepDays(int d) => _s.write(key: 'keep_days', value: '$d');
 
+  /// Custom vocabulary (one entry per line); [dirty] = changed here, not yet sent to the Mac.
+  Future<(String, bool)> vocabulary() async {
+    final v = await _s.read(key: 'vocabulary') ?? '';
+    return (v, (await _s.read(key: 'vocabulary_dirty')) == '1');
+  }
+
+  Future<void> saveVocabulary(String v, {bool dirty = false}) async {
+    await _s.write(key: 'vocabulary', value: v);
+    await _s.write(key: 'vocabulary_dirty', value: dirty ? '1' : '0');
+  }
+
   Future<bool> paused() async => (await _s.read(key: 'paused')) == '1';
   Future<void> savePaused(bool p) => _s.write(key: 'paused', value: p ? '1' : '0');
 }
