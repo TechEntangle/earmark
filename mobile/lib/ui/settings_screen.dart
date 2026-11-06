@@ -38,6 +38,8 @@ class SettingsScreen extends StatelessWidget {
               ),
             ]),
           ),
+          const SizedBox(height: 14),
+          PendantPanel(c: c),
           if (c.asrEngine.supported) ...[
             const SizedBox(height: 14),
             Panel(
@@ -138,16 +140,7 @@ class SettingsScreen extends StatelessWidget {
           Panel(
             padding: EdgeInsets.zero,
             child: Column(children: [
-              ListTile(
-                title: const Text('Pendant'),
-                subtitle: Text([
-                  if (c.pendant.firmware != null) 'Firmware ${c.pendant.firmware}',
-                  if (c.pendant.codec != null) 'codec ${c.pendant.codec}',
-                  if (c.pendant.lastError != null) 'last error: ${c.pendant.lastError}',
-                ].join(' · '), style: tt.bodySmall),
-              ),
               if ((c.voiceBook?.voices ?? const []).isNotEmpty) ...[
-                const Divider(),
                 ExpansionTile(
                   key: const Key('voices'),
                   title: const Text('Voices'),
@@ -167,21 +160,8 @@ class SettingsScreen extends StatelessWidget {
                       ),
                   ],
                 ),
+                const Divider(),
               ],
-              const Divider(),
-              ExpansionTile(
-                key: const Key('pendantHelp'),
-                title: const Text('Pendant buttons'),
-                shape: const Border(),
-                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                children: [
-                  pendantHint(context, 'Single tap', 'Earmark this moment. Say what to remember right after: "remind me to…"'),
-                  pendantHint(context, 'Double tap', 'Pause or resume recording'),
-                  pendantHint(context, 'Vibrations', 'three short = recording, one long = paused, one medium = earmarked'),
-                  pendantHint(context, 'Hold 3 s', 'Power off (press to turn back on)'),
-                ],
-              ),
-              const Divider(),
               ListTile(
                 title: const Text('About and licences'),
                 subtitle: Text('Earmark $appVersion. Private by design: no accounts, no tracking, no cloud.', style: tt.bodySmall),
@@ -202,3 +182,148 @@ Widget pendantHint(BuildContext context, String a, String b) => Padding(
         Expanded(child: Text(b, style: TextStyle(fontSize: 13.5, color: context.t.ink2))),
       ]),
     );
+
+/// The pendant itself: its light, microphone, what the button does and whether it vibrates.
+/// The same settings as on the Mac; changing them here changes them there too.
+class PendantPanel extends StatelessWidget {
+  final EarmarkController c;
+  const PendantPanel({super.key, required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t, tt = Theme.of(context).textTheme, p = c.prefs, here = c.pendant.connected;
+    final about = [
+      if (c.pendant.battery != null) 'Battery ${c.pendant.battery}%',
+      if (c.pendant.firmware != null) 'firmware ${c.pendant.firmware}',
+    ];
+    return Panel(
+      key: const Key('pendantPanel'),
+      padding: EdgeInsets.zero,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ListTile(
+          title: const Text('Pendant'),
+          subtitle: Text(
+              here
+                  ? about.join(' · ')
+                  : c.macHasPendant
+                      ? 'With your Mac. Changes here reach it through your Mac.'
+                      : 'Not connected. Changes reach it when it connects.',
+              style: tt.bodySmall),
+        ),
+        const Divider(),
+        SwitchListTile(
+          key: const Key('singleTapSwitch'),
+          title: const Text('Single tap to earmark'),
+          subtitle: Text('Tap once to mark a moment as important. Say "remind me to…" after the tap and it becomes a task.',
+              style: tt.bodySmall),
+          value: p.singleTapEarmark,
+          onChanged: (v) => c.setPrefs(p.copyWith(singleTapEarmark: v)),
+        ),
+        SwitchListTile(
+          key: const Key('doubleTapSwitch'),
+          title: const Text('Double tap to pause'),
+          subtitle: Text('Double tap to stop recording; the light turns off. Double tap again to resume.', style: tt.bodySmall),
+          value: p.doubleTapPause,
+          onChanged: (v) => c.setPrefs(p.copyWith(doubleTapPause: v)),
+        ),
+        SwitchListTile(
+          key: const Key('hapticsSwitch'),
+          title: const Text('Vibrate to confirm'),
+          subtitle: Text('One medium buzz for an earmark, one long when paused, three short when recording again.',
+              style: tt.bodySmall),
+          value: p.haptics,
+          onChanged: (v) => c.setPrefs(p.copyWith(haptics: v)),
+        ),
+        const Divider(),
+        _LedSlider(c: c),
+        const Divider(),
+        ListTile(
+          title: const Text('Microphone level'),
+          subtitle: Text(p.micGain < 0 ? "The pendant's own setting" : 'Higher picks up quieter voices, and more noise.',
+              style: tt.bodySmall),
+          trailing: DropdownButton<int>(
+            key: const Key('micGain'),
+            value: p.micGain,
+            underline: const SizedBox(),
+            borderRadius: BorderRadius.circular(12),
+            items: [
+              const DropdownMenuItem(value: -1, child: Text('As is')),
+              for (var i = 0; i <= 8; i++)
+                DropdownMenuItem(value: i, child: Text(i == 0 ? '0 (off)' : i == 8 ? '8 (loudest)' : '$i')),
+            ],
+            onChanged: (v) {
+              if (v != null) c.setPrefs(p.copyWith(micGain: v));
+            },
+          ),
+        ),
+        const Divider(),
+        ExpansionTile(
+          key: const Key('pendantHelp'),
+          title: const Text('Button and vibrations'),
+          shape: const Border(),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          children: [
+            pendantHint(context, 'Single tap', p.singleTapEarmark ? 'Earmark this moment' : 'Does nothing (turned off)'),
+            pendantHint(context, 'Double tap', p.doubleTapPause ? 'Pause or resume recording' : 'Does nothing (turned off)'),
+            pendantHint(context, 'Vibrations', p.haptics ? 'three short = recording, one long = paused, one medium = earmarked' : 'Off'),
+            pendantHint(context, 'Hold 3 s', 'Power off (press to turn back on)'),
+            if (here)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('tryBuzz'),
+                  onPressed: c.testBuzz,
+                  icon: const Icon(Icons.vibration, size: 18),
+                  label: const Text('Feel an earmark buzz'),
+                ),
+              ),
+          ],
+        ),
+        if (c.pendant.lastError != null && !here)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text('Last problem: ${c.pendant.lastError}', style: TextStyle(fontSize: 12.5, color: t.ink3)),
+          ),
+      ]),
+    );
+  }
+}
+
+class _LedSlider extends StatefulWidget {
+  final EarmarkController c;
+  const _LedSlider({required this.c});
+  @override
+  State<_LedSlider> createState() => _LedSliderState();
+}
+
+class _LedSliderState extends State<_LedSlider> {
+  double? _dragging;
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.c, tt = Theme.of(context).textTheme;
+    final v = _dragging ?? c.prefs.led.toDouble();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 2),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text('Light brightness', style: tt.bodyLarge)),
+          Text(v == 0 ? 'Off' : '${v.round()}%', style: TextStyle(fontWeight: FontWeight.w600, color: context.t.ink2)),
+          const SizedBox(width: 8),
+        ]),
+        Text(c.paused ? 'Off while paused.' : '0% turns the light off. While paused it is always off.', style: tt.bodySmall),
+        Slider(
+          key: const Key('ledSlider'),
+          value: v,
+          min: 0,
+          max: 100,
+          divisions: 20,
+          onChanged: (x) => setState(() => _dragging = x),
+          onChangeEnd: (x) {
+            setState(() => _dragging = null);
+            c.setPrefs(c.prefs.copyWith(led: x.round()));
+          },
+        ),
+      ]),
+    );
+  }
+}

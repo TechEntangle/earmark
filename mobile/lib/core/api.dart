@@ -115,6 +115,9 @@ class Api {
         'engine': checked ? 'iphone-multi' : 'parakeet-v2-coreml',
       });
 
+  /// Change the pendant settings on the Mac too.
+  Future<void> pendantSettings(Map<String, Object> s) => post('/api/app/settings', s);
+
   Future<void> event(String type, {DateTime? at}) => post('/api/app/event',
       {'type': type, 'at': (at ?? DateTime.now()).millisecondsSinceEpoch / 1000});
 

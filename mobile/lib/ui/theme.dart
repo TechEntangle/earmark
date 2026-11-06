@@ -104,15 +104,12 @@ class Panel extends StatelessWidget {
   final Color? color;
   const Panel({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.color});
   @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        padding: padding,
-        decoration: BoxDecoration(
-          color: color ?? context.t.surface,
-          border: Border.all(color: context.t.line),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: child,
+  Widget build(BuildContext context) => Material(
+        // a Material, so list rows inside show their tap ripples
+        color: color ?? context.t.surface,
+        shape: RoundedRectangleBorder(side: BorderSide(color: context.t.line), borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(width: double.infinity, child: Padding(padding: padding, child: child)),
       );
 }
 

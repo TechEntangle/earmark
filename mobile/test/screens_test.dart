@@ -6,9 +6,11 @@ import 'package:earmark/app_controller.dart';
 import 'package:earmark/core/api.dart';
 import 'package:earmark/core/config.dart';
 import 'package:earmark/pendant/pendant_service.dart';
+import 'package:earmark/pendant/protocol.dart';
 import 'package:earmark/recorder/chunk_store.dart';
 import 'package:earmark/ui/now_screen.dart';
 import 'package:earmark/ui/pair_screen.dart';
+import 'package:earmark/ui/settings_screen.dart';
 import 'package:earmark/ui/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -46,8 +48,11 @@ class FakePendant extends PendantService {
 
   @override
   Future<void> buzz(List<(int, int)> pattern) async => buzzes.add(pattern);
+  final leds = <int>[], mics = <int>[];
   @override
-  Future<bool> setLed(int pct) async => true;
+  Future<bool> setLed(int pct) async => (leds..add(pct)).isNotEmpty;
+  @override
+  Future<bool> setMicGain(int level) async => (mics..add(level)).isNotEmpty;
   int reconnects = 0;
   @override
   void reconnectNow() => reconnects++;
@@ -214,6 +219,76 @@ void main() {
     await c.heartbeat();
     expect(sent.last['wants_pendant'], isFalse);
     expect(sent.last['holds_pendant'], isTrue);
+    c.dispose();
+  });
+
+  test('pendant settings: changed on the phone, applied at once, sent to the Mac; the button and buzz obey them', () async {
+    final p = FakePendant();
+    await p.start();
+    final c = controller(p)..paused = false;
+    final pushed = <Map>[];
+    var macSettings = <String, Object>{'led_brightness': 60, 'mic_gain': -1, 'single_tap_earmark': true,
+      'double_tap_pause': true, 'haptics': true, 'session_gap_seconds': 90};
+    var macUp = false;
+    c.api = Api(Uri.parse('https://mac.tail1234.ts.net'), 'tok', client: MockClient((r) async {
+      if (r.url.path == '/api/app/settings') {
+        if (!macUp) return http.Response('{}', 503);
+        pushed.add(jsonDecode(r.body) as Map);
+        macSettings = {...macSettings, ...(pushed.last.cast<String, Object>())};
+        return http.Response(jsonEncode({'ok': true}), 200);
+      }
+      if (r.url.path == '/api/app/heartbeat') {
+        return http.Response(jsonEncode({'ok': true, 'paused': false, 'settings': macSettings, 'last_seq': 0}), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    // the Mac's settings arrive with the heartbeat
+    await c.heartbeat();
+    expect(c.prefs.led, 60);
+    expect(p.leds.last, 60);
+    // changed here while the Mac is away: applied to the pendant now, the Mac doesn't undo it
+    await c.setPrefs(c.prefs.copyWith(led: 20, micGain: 6, haptics: false));
+    expect(p.leds.last, 20);
+    expect(p.mics.last, 6);
+    expect(pushed, isEmpty);
+    macSettings = {...macSettings, 'led_brightness': 60};
+    macUp = true;
+    await c.heartbeat();
+    expect(c.prefs.led, 20, reason: 'not yet sent: the phone keeps its change and sends it');
+    expect(pushed.last['led_brightness'], 20);
+    expect(pushed.last['haptics'], false);
+    // changed on the Mac later: the phone follows
+    macSettings = {...macSettings, 'led_brightness': 80};
+    await c.heartbeat();
+    expect(c.prefs.led, 80);
+    // vibration off: earmarks are silent
+    p.buzzes.clear();
+    c.earmarkNow();
+    expect(c.earmarks, isNotEmpty);
+    expect(p.buzzes, isEmpty);
+    // double tap to pause turned off: a double tap does nothing
+    await c.setPrefs(c.prefs.copyWith(doubleTapPause: false));
+    c.button(ButtonEvent.doubleTap);
+    expect(c.paused, isFalse);
+    await c.setPrefs(c.prefs.copyWith(doubleTapPause: true));
+    c.button(ButtonEvent.doubleTap);
+    await Future<void>.delayed(Duration.zero);
+    expect(c.paused, isTrue);
+    expect(p.leds.last, 0, reason: 'the light is off while paused');
+    c.dispose();
+  });
+
+  testWidgets('settings: the pendant panel', (t) async {
+    final p = FakePendant()..firmware = '2.0.10';
+    await p.start();
+    final c = controller(p);
+    await t.pumpWidget(wrap(SettingsScreen(c: c)));
+    expect(find.text('Battery 82% · firmware 2.0.10'), findsOneWidget);
+    expect(find.byKey(const Key('ledSlider')), findsOneWidget);
+    await t.tap(find.byKey(const Key('hapticsSwitch')));
+    await t.pump();
+    expect(c.prefs.haptics, isFalse);
+    expect(find.byKey(const Key('micGain')), findsOneWidget);
     c.dispose();
   });
 }

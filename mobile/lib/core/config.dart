@@ -1,6 +1,10 @@
 // What this phone remembers: which Mac it is paired with (address + device token, kept in
 // the Keychain / Android Keystore), and which pendant it uses.
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../pendant/prefs.dart';
 
 class Pairing {
   final Uri server;
@@ -51,6 +55,19 @@ class ConfigStore {
   /// Send my tasks to Apple Reminders (off unless turned on).
   Future<bool> reminders() async => (await _s.read(key: 'reminders')) == '1';
   Future<void> saveReminders(bool on) => _s.write(key: 'reminders', value: on ? '1' : '0');
+
+  /// The pendant's light, microphone and button settings; [dirty] = changed here, not yet sent to the Mac.
+  Future<(PendantPrefs, bool)> pendantPrefs() async {
+    try {
+      final m = jsonDecode(await _s.read(key: 'pendant_prefs') ?? '{}') as Map;
+      return (PendantPrefs.fromJson(m), m['dirty'] == true);
+    } catch (_) {
+      return (const PendantPrefs(), false);
+    }
+  }
+
+  Future<void> savePendantPrefs(PendantPrefs p, {bool dirty = false}) =>
+      _s.write(key: 'pendant_prefs', value: jsonEncode({...p.toJson(), 'dirty': dirty}));
 
   Future<bool> paused() async => (await _s.read(key: 'paused')) == '1';
   Future<void> savePaused(bool p) => _s.write(key: 'paused', value: p ? '1' : '0');

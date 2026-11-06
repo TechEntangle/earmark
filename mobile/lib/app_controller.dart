@@ -15,6 +15,7 @@ import 'package:path_provider/path_provider.dart';
 import 'core/api.dart';
 import 'core/config.dart';
 import 'pendant/pendant_service.dart';
+import 'pendant/prefs.dart';
 import 'pendant/protocol.dart';
 import 'recorder/chunk_store.dart';
 import 'ask/ask_index.dart';
@@ -103,6 +104,9 @@ class EarmarkController extends ChangeNotifier {
   DateTime? lastUpload;
   DateTime? lastEarmark;
   Map<String, dynamic> macSettings = {};
+  /// The pendant's light, microphone, button and vibration settings (kept in step with the Mac).
+  PendantPrefs prefs = const PendantPrefs();
+  bool _prefsDirty = false; // changed on this phone, not yet on the Mac
   Map<String, dynamic>? macStatus;
   bool ready = false;
   bool macHasPendant = false;
@@ -214,8 +218,12 @@ class EarmarkController extends ChangeNotifier {
   }
 
   late final TapInterpreter _taps = TapInterpreter(
-    onSingle: _earmark,
-    onDouble: togglePause,
+    onSingle: (at) {
+      if (prefs.singleTapEarmark) _earmark(at);
+    },
+    onDouble: () {
+      if (prefs.doubleTapPause) unawaited(togglePause());
+    },
     schedule: (d, f) => Timer(d, f),
     cancel: (t) => (t as Timer?)?.cancel(),
   );
@@ -249,13 +257,16 @@ class EarmarkController extends ChangeNotifier {
     } catch (_) {}
     transcribeHere = await config.transcribeHere();
     remindersOn = await config.reminders();
+    final (savedPrefs, prefsDirty) = await config.pendantPrefs();
+    prefs = savedPrefs;
+    _prefsDirty = prefsDirty;
     pairing = await config.pairing();
     if (pairing != null) api = Api(pairing!.server, pairing!.token);
     pendant.onPaired = (id) => config.savePendantId(id);
     pendant.catchUp = _catchUp;
     pendant.addListener(_onPendant);
     _frameSub = pendant.frames.listen(_onFrame);
-    _btnSub = pendant.buttons.listen(_taps.handle);
+    _btnSub = pendant.buttons.listen(button);
     ready = true;
     notifyListeners();
     if (pairing != null) await startHolding();
@@ -866,7 +877,7 @@ class EarmarkController extends ChangeNotifier {
     await config.savePaused(paused);
     if (paused) store?.close();
     notifyListeners();
-    unawaited(pendant.buzz(paused ? Buzz.paused : Buzz.recording));
+    unawaited(_buzz(paused ? Buzz.paused : Buzz.recording));
     if (paused) {
       unawaited(pendant.setLed(0));
     } else {
@@ -877,7 +888,7 @@ class EarmarkController extends ChangeNotifier {
 
   void _earmark(DateTime at) {
     if (paused) {
-      unawaited(pendant.buzz(Buzz.paused)); // reminder: nothing is being recorded
+      unawaited(_buzz(Buzz.paused)); // reminder: nothing is being recorded
       return;
     }
     lastEarmark = at;
@@ -888,18 +899,72 @@ class EarmarkController extends ChangeNotifier {
       _earmarksFile?.writeAsStringSync(jsonEncode(earmarks));
     } catch (_) {}
     notifyListeners();
-    unawaited(pendant.buzz(Buzz.earmark));
+    unawaited(_buzz(Buzz.earmark));
     _queueEvent('earmark', at);
   }
+
+  /// A press of the pendant's button (as it arrives over Bluetooth).
+  void button(ButtonEvent e) => _taps.handle(e);
 
   /// Earmark from the app's own button (same as a single tap on the pendant).
   void earmarkNow() => _earmark(DateTime.now());
 
+  Future<void> _buzz(List<Pulse> pattern) async {
+    if (prefs.haptics) await pendant.buzz(pattern);
+  }
+
   void _applySettings() {
-    final led = macSettings['led_brightness'];
-    final mic = macSettings['mic_gain'];
-    if (led is int) unawaited(pendant.setLed(paused ? 0 : led));
-    if (mic is int && mic >= 0) unawaited(pendant.setMicGain(mic));
+    unawaited(pendant.setLed(paused ? 0 : prefs.led));
+    if (prefs.micGain >= 0) unawaited(pendant.setMicGain(prefs.micGain));
+  }
+
+  /// Change the pendant's settings from this phone: applied to the pendant right away and sent
+  /// to the Mac, so both behave the same.
+  Future<void> setPrefs(PendantPrefs p) async {
+    if (p == prefs) return;
+    final ledChanged = p.led != prefs.led, micChanged = p.micGain != prefs.micGain;
+    prefs = p;
+    _prefsDirty = true;
+    notifyListeners();
+    if (pendant.connected) {
+      if (ledChanged) unawaited(pendant.setLed(paused ? 0 : p.led));
+      if (micChanged && p.micGain >= 0) unawaited(pendant.setMicGain(p.micGain));
+    }
+    try {
+      await config.savePendantPrefs(p, dirty: true);
+    } catch (_) {}
+    await _pushPrefs();
+  }
+
+  /// Try a vibration on the pendant (ignores the vibration switch, so you can feel what it does).
+  Future<void> testBuzz() => pendant.buzz(Buzz.earmark);
+
+  Future<void> _pushPrefs() async {
+    final a = api;
+    if (a == null || !_prefsDirty) return;
+    final sent = prefs;
+    try {
+      await a.pendantSettings(sent.toJson());
+      if (prefs != sent) return; // changed again meanwhile: the next push sends it
+      _prefsDirty = false;
+      try {
+        await config.savePendantPrefs(sent);
+      } catch (_) {}
+    } catch (_) {/* the Mac is away: sent with the next heartbeat */}
+  }
+
+  /// The Mac's copy of the settings wins unless this phone changed them and hasn't sent them yet.
+  Future<void> _takeMacPrefs(Map<String, dynamic> m) async {
+    if (_prefsDirty) {
+      await _pushPrefs();
+      return;
+    }
+    final p = PendantPrefs.fromJson(m, prefs);
+    if (p == prefs) return;
+    prefs = p;
+    try {
+      await config.savePendantPrefs(p);
+    } catch (_) {}
   }
 
   // ------------------------------------------------------------ Mac sync
@@ -960,6 +1025,7 @@ class EarmarkController extends ChangeNotifier {
       link = Link.online;
       linkError = null;
       macSettings = Map<String, dynamic>.from(r['settings'] as Map? ?? {});
+      await _takeMacPrefs(macSettings);
       macHasPendant = r['mac_has_pendant'] == true;
       if (pendant.connected) _markHeld();
       final last = r['last_seq'];
@@ -971,7 +1037,7 @@ class EarmarkController extends ChangeNotifier {
         pausedSince = paused ? DateTime.now() : null;
         await config.savePaused(paused);
         if (paused) store?.close();
-        unawaited(pendant.buzz(paused ? Buzz.paused : Buzz.recording));
+        unawaited(_buzz(paused ? Buzz.paused : Buzz.recording));
       }
       if (pendant.connected) _applySettings();
       notifyListeners();

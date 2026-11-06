@@ -659,6 +659,25 @@ def test_phone_transcript_is_used_instead_of_the_macs(server):
     assert got["segments"][0]["start"] >= t0
 
 
+def test_phone_changes_the_pendant_settings(server):
+    code = call(server, "/api/phone/code", "POST", {})["code"]
+    tok = _app_call(server, "/api/app/pair", body={"code": code, "name": "Settings phone"})[1]["token"]
+    assert _app_call(server, "/api/app/settings", body={"haptics": False})[0] == 401
+    before = call(server, "/api/settings")["config"]
+    try:
+        st, r = _app_call(server, "/api/app/settings", tok, body={"led_brightness": 140, "mic_gain": 5, "haptics": False,
+                                                                 "single_tap_earmark": False, "openai_key": "nope"})
+        assert st == 200 and r["settings"]["led_brightness"] == 100 and r["settings"]["haptics"] is False
+        cfg = call(server, "/api/settings")["config"]
+        assert cfg["mic_gain"] == 5 and cfg["single_tap_earmark"] is False and cfg["double_tap_pause"] is True
+        assert cfg["openai_key"] == before["openai_key"], "only the pendant's settings can be changed from the phone"
+        st, r = _app_call(server, "/api/app/heartbeat", tok, body={})
+        assert r["settings"]["mic_gain"] == 5
+        assert _app_call(server, "/api/app/settings", tok, body={"mic_gain": "loud"})[0] == 400
+    finally:
+        call(server, "/api/settings", "PUT", {k: before[k] for k in ("led_brightness", "mic_gain", "haptics", "single_tap_earmark")})
+
+
 def test_phone_forwards_the_pendants_own_memory(server):
     code = call(server, "/api/phone/code", "POST", {})["code"]
     tok = _app_call(server, "/api/app/pair", body={"code": code, "name": "Ring phone"})[1]["token"]

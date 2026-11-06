@@ -1363,6 +1363,38 @@ def api_app_heartbeat(request: Request, body: dict):
             "mac_has_pendant": bool(S.pd), "server_time": time.time()}
 
 
+_PENDANT_KEYS = ("led_brightness", "mic_gain", "single_tap_earmark", "double_tap_pause", "haptics")
+
+
+@app.post("/api/app/settings")
+def api_app_settings(request: Request, body: dict):
+    """The phone changed the pendant's light, microphone, button or vibration settings."""
+    dev = _app_device(request)
+    cfg = load_config()
+    changed = []
+    for k in _PENDANT_KEYS:
+        if k not in body:
+            continue
+        v = body[k]
+        try:
+            v = bool(v) if isinstance(DEFAULT_CONFIG[k], bool) else int(float(v))
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"invalid value for {k}")
+        if k == "led_brightness":
+            v = max(0, min(100, v))
+        if k == "mic_gain":
+            v = max(-1, min(8, v))
+        if cfg.get(k) != v:
+            cfg[k] = v
+            changed.append(k)
+    if changed:
+        save_config(cfg)
+        S.settings_changed.set()
+        S.wake.set()
+        S.say(f"{dev['name'].replace('Earmark app on ', '')} changed the pendant settings")
+    return {"ok": True, "settings": _app_settings()}
+
+
 @app.post("/api/app/audio")
 async def api_app_audio(request: Request):
     dev = _app_device(request)
