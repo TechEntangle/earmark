@@ -5,16 +5,15 @@ backup and does the heavy lifting (other languages, full Whisper). Newest decisi
 each section. Status: **now** (being built), **next**, **later**, **idea**, **done**.
 
 ## Now
-- **Custom vocabulary**: names and terms you use (colleagues, products, acronyms) so they're spelled
-  right, on the phone and the Mac.
 - **Mac app, stage 2**: the engine's jobs move into the app one by one (pendant over Bluetooth,
   Parakeet / WhisperKit, Apple's model for notes), then Python is retired.
 
 ## Next
 - **Pendant firmware updates from Earmark** (the firmware accepts updates over Bluetooth); careful:
   battery check, verified images only.
-- **Ask, version 2**: Ask calls tools (conversations by date/person, open tasks, people, calendar)
-  instead of only retrieving passages; follow-up questions; Ask over Mac-only conversations too.
+- **Ask, version 3**: Ask calls tools (conversations by date/person, open tasks, people, calendar)
+  instead of only retrieving passages.
+- **Widgets, Live Activity, Control Center button** (need new app extensions in Xcode).
 - **Bring Mac voices to the phone**: re-learn from conversations already named on the Mac.
 
 - **Edit conversations**: rename, delete, star, merge two, fix a transcript line or its speaker.
@@ -25,7 +24,6 @@ each section. Status: **now** (being built), **next**, **later**, **idea**, **do
 - **Meeting prep**: before a calendar meeting, a brief from past conversations with those people.
 - **Follow-up drafts**: after a meeting, a ready email/message with decisions and actions.
 - **People pages**: voice, topics, promises both ways, things they mentioned (projects, dates).
-- **Today on the phone**: morning brief from the phone's own data (highlights, open tasks, people).
 - **Overnight work while charging**: redo notes with more context, build the index, tidy speakers,
   write the morning brief (background processing, no daytime battery).
 - **Privacy rules**: auto-pause by place (home, rooms, the bank floor) or schedule, with an indicator.
@@ -64,6 +62,12 @@ export, widgets/Siri, pendant care (OTA, battery history), integrations (we keep
 Things not to copy: cloud processing, public share links, third-party app store with raw-audio access.
 
 ## Done
+- Custom vocabulary (names and terms), one list for phone and Mac: transcripts corrected word by word,
+  terms given to the notes model.
+- Today on the iPhone: brief of the day, due today/overdue, conversations, earmarks, people.
+- Share a conversation: notes, notes + transcript, or the recording.
+- Ask: follow-up questions; asks your Mac when the phone has nothing.
+- Mac app installs engine updates itself (no Terminal).
 - **Earmark for Mac** (stage 1): a real Mac app (~/Applications/Earmark.app) over the engine: Today,
   Conversations (notes, tasks, who spoke, transcript, playback with speed), Tasks, Ask, People,
   Pendant, Settings; menu bar with state, pause/resume, earmark; starts the engine; open at login;
