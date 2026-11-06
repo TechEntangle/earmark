@@ -43,18 +43,25 @@ class Conversation {
   List<List<Object>> turns;
   /// speaker id → {name?, guess?, sim, seconds, energy, embedding}
   Map<String, Map<String, dynamic>> voices;
+  bool starred;
+  /// a title you gave it (wins over the notes' title)
+  String? userTitle;
+  /// your fixes to transcript lines, by the line's time ("12.34"): {text?, speaker?}
+  Map<String, Map<String, dynamic>> edits;
 
   Conversation(this.id, this.start, this.end, this.seqs,
       {this.status = 'open', this.title, this.kind, this.summary, this.error, List<String>? keyPoints, List<String>? decisions,
       List<String>? people, List<String>? topics, List<ConvTask>? tasks, this.attempts = 0, this.words = 0,
-      this.spk, List<List<Object>>? turns, Map<String, Map<String, dynamic>>? voices})
+      this.spk, List<List<Object>>? turns, Map<String, Map<String, dynamic>>? voices,
+      this.starred = false, this.userTitle, Map<String, Map<String, dynamic>>? edits})
       : keyPoints = keyPoints ?? [],
         decisions = decisions ?? [],
         people = people ?? [],
         topics = topics ?? [],
         tasks = tasks ?? [],
         turns = turns ?? [],
-        voices = voices ?? {};
+        voices = voices ?? {},
+        edits = edits ?? {};
 
   double get seconds => end - start;
 
@@ -102,7 +109,7 @@ class Conversation {
         'id': id, 'start': start, 'end': end, 'seqs': seqs, 'status': status, 'title': title, 'kind': kind,
         'summary': summary, 'error': error, 'keyPoints': keyPoints, 'decisions': decisions, 'people': people,
         'topics': topics, 'tasks': [for (final t in tasks) t.toJson()], 'attempts': attempts, 'words': words,
-        'spk': spk, 'turns': turns, 'voices': voices,
+        'spk': spk, 'turns': turns, 'voices': voices, 'starred': starred, 'userTitle': userTitle, 'edits': edits,
       };
 
   static Conversation fromJson(Map m) {
@@ -116,7 +123,10 @@ class Conversation {
         attempts: (m['attempts'] as num?)?.toInt() ?? 0, words: (m['words'] as num?)?.toInt() ?? 0,
         spk: m['spk'] as String?,
         turns: [for (final t in (m['turns'] as List? ?? [])) [for (final x in t as List) x as Object]],
-        voices: {for (final e in (m['voices'] as Map? ?? {}).entries) '${e.key}': Map<String, dynamic>.from(e.value as Map)});
+        voices: {for (final e in (m['voices'] as Map? ?? {}).entries) '${e.key}': Map<String, dynamic>.from(e.value as Map)},
+        starred: m['starred'] == true,
+        userTitle: m['userTitle'] as String?,
+        edits: {for (final e in (m['edits'] as Map? ?? {}).entries) '${e.key}': Map<String, dynamic>.from(e.value as Map)});
   }
 }
 
@@ -277,8 +287,18 @@ class Conversations {
       }
     }
     flush();
-    return out;
+    if (c.edits.isEmpty) return out;
+    return [
+      for (final l in out)
+        if (c.edits[editKey(l.at)] case final e?)
+          Line(l.at, (e['text'] as String?) ?? l.text,
+              pending: l.pending, translated: l.translated, speaker: (e['speaker'] as String?) ?? l.speaker)
+        else
+          l,
+    ];
   }
+
+  static String editKey(double at) => at.toStringAsFixed(2);
 
   static String clockText(double s) {
     final t = s.round();

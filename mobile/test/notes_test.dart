@@ -340,4 +340,63 @@ void main() {
     await t.pumpWidget(const SizedBox());
     t.view.resetPhysicalSize();
   });
+
+  testWidgets('editing: rename, star, fix a line and who said it, delete', (t) async {
+    await loadFonts();
+    t.view.physicalSize = const Size(1179, 2556);
+    t.view.devicePixelRatio = 3;
+    final c = EarmarkController(config: MemConfig(), pendant: PendantService(), asr: FakeEngine([]))
+      ..heard = heard
+      ..convs = Conversations(File('${dir.path}/c5.json'))
+      ..notesState = 'available';
+    c.convs!.sync(heard, gap: 90, now: t0 + 800);
+    final v = c.convs!.byId(1)!
+      ..turns = [[0.0, 31.9, 'S1'], [31.95, 34.35, 'S2'], [34.36, 50.0, 'S1']]
+      ..voices = {'S1': {'name': 'Me'}, 'S2': {}};
+    Conversations.applyNotes(v, Map<String, dynamic>.from(notes));
+    await t.pumpWidget(MaterialApp(
+        theme: earmarkTheme(Brightness.dark),
+        home: Builder(builder: (ctx) => TextButton(
+            onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(builder: (_) => PhoneConversationScreen(c: c, id: 1))),
+            child: const Text('open')))));
+    await t.tap(find.text('open'));
+    await t.pumpAndSettle();
+
+    await t.tap(find.byKey(const Key('convMenu')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Rename'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('renameField')), 'Contract with Sam');
+    await t.tap(find.byKey(const Key('renameSave')));
+    await t.pumpAndSettle();
+    expect(find.text('Contract with Sam'), findsOneWidget);
+    expect(convTitle(c, v), 'Contract with Sam');
+
+    await t.tap(find.byKey(const Key('starBtn')));
+    await t.pump();
+    expect(v.starred, isTrue);
+
+    await t.ensureVisible(find.text('Remind me to call the bank about the card.'));
+    await t.longPress(find.text('Remind me to call the bank about the card.'));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('lineText')), 'Remind me to call the bank about the new card.');
+    await t.tap(find.widgetWithText(ChoiceChip, 'Speaker 2'));
+    await t.pump();
+    await t.tap(find.byKey(const Key('lineSave')));
+    await t.pumpAndSettle();
+    final fixed = Conversations.lines(v, heard).last;
+    expect((fixed.text, fixed.speaker), ('Remind me to call the bank about the new card.', 'S2'));
+    expect(Conversations(File('${dir.path}/c5.json')).byId(1)!.edits, isNotEmpty, reason: 'saved');
+
+    await t.tap(find.byKey(const Key('convMenu')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Delete'));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('deleteConfirm')));
+    await t.pumpAndSettle();
+    expect(c.convs!.byId(1), isNull);
+    expect(heard.bySeq(1), isNull, reason: 'its transcript is gone too');
+    expect(find.text('open'), findsOneWidget, reason: 'back to the list');
+    t.view.resetPhysicalSize();
+  });
 }

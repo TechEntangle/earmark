@@ -85,7 +85,7 @@ class AskIndex {
   }
 
   static String signature(Conversation c) => [
-        c.status, c.words, c.spk, c.title, c.tasks.length,
+        c.status, c.words, c.spk, c.userTitle ?? c.title, c.tasks.length, c.edits.length,
         c.voices.values.map((v) => v['name'] ?? '').join(','),
       ].join('|');
 
@@ -94,7 +94,7 @@ class AskIndex {
     final out = <Passage>[];
     if (c.status == 'ready') {
       final notes = [
-        if ((c.title ?? '').isNotEmpty) c.title!,
+        if ((c.userTitle ?? c.title ?? '').isNotEmpty) c.userTitle ?? c.title!,
         if ((c.summary ?? '').isNotEmpty) c.summary!,
         ...c.keyPoints,
         if (c.decisions.isNotEmpty) 'Decided: ${c.decisions.join('; ')}',

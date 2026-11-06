@@ -532,6 +532,52 @@ class EarmarkController extends ChangeNotifier {
     unawaited(processConversations());
   }
 
+  // ---- editing conversations
+  void renameConversation(Conversation v, String title) {
+    final t = title.trim();
+    v.userTitle = t.isEmpty ? null : t;
+    convs?.save();
+    notifyListeners();
+  }
+
+  void toggleStar(Conversation v) {
+    v.starred = !v.starred;
+    convs?.save();
+    notifyListeners();
+  }
+
+  /// Fix a transcript line: its words and/or who said it.
+  void editLine(Conversation v, double at, {String? text, String? speaker}) {
+    final k = Conversations.editKey(at);
+    final e = v.edits[k] ?? {};
+    if (text != null) e['text'] = text.trim();
+    if (speaker != null) e['speaker'] = speaker;
+    v.edits[k] = e;
+    convs?.save();
+    notifyListeners();
+  }
+
+  /// Write the notes again (e.g. after fixing the transcript).
+  void rewriteNotes(Conversation v) => retryNotes(v);
+
+  /// Delete a conversation from this phone: its transcript, notes, tasks and audio.
+  void deleteConversation(Conversation v) {
+    final h = heard, s = store;
+    if (h != null && s != null) {
+      for (final seq in v.seqs) {
+        final ch = h.bySeq(seq);
+        if (ch == null) continue;
+        final f = s.fileFor(seq, (ch.start * 1e6).round());
+        if (f != null && f.path.contains('/kept/')) f.deleteSync(); // unsent audio still goes to the Mac
+      }
+    }
+    h?.remove(v.seqs.toSet());
+    convs?.all.remove(v);
+    convs?.save();
+    notifyListeners();
+    unawaited(updateAskIndex());
+  }
+
   void forgetVoice(String name) {
     voiceBook?.forget(name);
     notifyListeners();

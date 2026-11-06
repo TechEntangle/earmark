@@ -91,6 +91,20 @@ class Heard {
     return null;
   }
 
+  /// Forget chunks (a deleted conversation).
+  void remove(Set<int> seqs) {
+    for (final e in _days.entries) {
+      final before = e.value.length;
+      e.value.removeWhere((c) => seqs.contains(c.seq));
+      if (e.value.length == before) continue;
+      final f = File('${dir.path}/${e.key}.jsonl');
+      final tmp = File('${f.path}.tmp');
+      tmp.writeAsStringSync(e.value.map((x) => '${jsonEncode(x.toJson())}\n').join(), flush: true);
+      tmp.renameSync(f.path);
+    }
+    _seqs.removeAll(seqs);
+  }
+
   /// Replace a chunk's record (e.g. with your Mac's translation).
   void replace(HeardChunk c) {
     final day = _key(c.startTime);

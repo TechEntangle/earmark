@@ -11,6 +11,7 @@ String _hm(DateTime t) => DateFormat.Hm().format(t);
 
 /// What to call a conversation before (or without) notes.
 String convTitle(EarmarkController c, Conversation v) {
+  if ((v.userTitle ?? '').isNotEmpty) return v.userTitle!;
   if (v.status == 'ready' && (v.title ?? '').isNotEmpty) return v.title!;
   if (v.status == 'open') return 'Listening…';
   if (v.status == 'pending' && c.heard != null && Conversations.awaitingMac(v, c.heard!)) return 'Translating on your Mac…';
@@ -83,6 +84,7 @@ class ConvRow extends StatelessWidget {
               const SizedBox(width: 10),
               Text('$n task${n == 1 ? '' : 's'}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.liveInk)),
             ],
+            if (v.starred) ...[const SizedBox(width: 8), Icon(Icons.star_rounded, size: 16, color: t.due)],
           ]),
         ),
       ),
@@ -91,21 +93,35 @@ class ConvRow extends StatelessWidget {
 }
 
 /// Talks: every conversation on this phone, by day.
-class PhoneTalksScreen extends StatelessWidget {
+class PhoneTalksScreen extends StatefulWidget {
   final EarmarkController c;
   const PhoneTalksScreen({super.key, required this.c});
+  @override
+  State<PhoneTalksScreen> createState() => _PhoneTalksScreenState();
+}
+
+class _PhoneTalksScreenState extends State<PhoneTalksScreen> {
+  bool starredOnly = false;
+  EarmarkController get c => widget.c;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Conversations')),
+        appBar: AppBar(title: const Text('Conversations'), actions: [
+          IconButton(
+            key: const Key('starredFilter'),
+            tooltip: starredOnly ? 'Show all' : 'Show starred',
+            icon: Icon(starredOnly ? Icons.star_rounded : Icons.star_border_rounded),
+            onPressed: () => setState(() => starredOnly = !starredOnly),
+          ),
+        ]),
         body: ListenableBuilder(
           listenable: c,
           builder: (context, _) {
             final t = context.t;
-            final all = c.convs?.visible ?? const <Conversation>[];
+            final all = (c.convs?.visible ?? const <Conversation>[]).where((v) => !starredOnly || v.starred).toList();
             if (all.isEmpty) {
               return Center(child: Padding(padding: const EdgeInsets.all(32),
-                  child: Text('Nothing yet. Conversations show up here a minute or so after they end.',
+                  child: Text(starredOnly ? 'No starred conversations.' : 'Nothing yet. Conversations show up here a minute or so after they end.',
                       textAlign: TextAlign.center, style: TextStyle(color: t.ink2))));
             }
             final out = <Widget>[];
@@ -182,9 +198,102 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
     super.dispose();
   }
 
+  Future<void> _rename(Conversation v) async {
+    final ctrl = TextEditingController(text: convTitle(c, v));
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename'),
+        content: TextField(key: const Key('renameField'), controller: ctrl, autofocus: true, onSubmitted: (x) => Navigator.pop(ctx, x)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(key: const Key('renameSave'), onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (name != null) c.renameConversation(v, name);
+  }
+
+  Future<void> _delete(Conversation v) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this conversation?'),
+        content: const Text('Its transcript, notes, tasks and audio are removed from this iPhone. Your Mac keeps its own copy.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(key: const Key('deleteConfirm'), onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      Navigator.of(context).pop();
+      c.deleteConversation(v);
+    }
+  }
+
+  Future<void> _editLine(Conversation v, Line l) async {
+    final ctrl = TextEditingController(text: l.text);
+    String? who = l.speaker;
+    final ids = v.speakerOrder;
+    final save = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: context.t.surface,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Fix this line', style: Theme.of(ctx).textTheme.headlineSmall),
+            const SizedBox(height: 12),
+            TextField(key: const Key('lineText'), controller: ctrl, maxLines: 5, minLines: 2),
+            if (ids.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Who said it', style: TextStyle(fontSize: 13, color: ctx.t.ink2)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, runSpacing: 6, children: [
+                for (final id in ids)
+                  ChoiceChip(label: Text(v.label(id)), selected: who == id, onSelected: (_) => set(() => who = id)),
+              ]),
+            ],
+            const SizedBox(height: 14),
+            FilledButton(key: const Key('lineSave'), onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ]),
+        ),
+      ),
+    );
+    if (save == true) {
+      c.editLine(v, l.at, text: ctrl.text != l.text ? ctrl.text : null, speaker: who != l.speaker ? who : null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(actions: [
+          if (c.convs?.byId(id) case final v?) ...[
+            IconButton(
+              key: const Key('starBtn'),
+              tooltip: v.starred ? 'Unstar' : 'Star',
+              icon: Icon(v.starred ? Icons.star_rounded : Icons.star_border_rounded),
+              onPressed: () => setState(() => c.toggleStar(v)),
+            ),
+            PopupMenuButton<String>(
+              key: const Key('convMenu'),
+              onSelected: (x) => switch (x) {
+                'rename' => _rename(v),
+                'notes' => c.rewriteNotes(v),
+                'delete' => _delete(v),
+                _ => null,
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                if (c.notesOn) const PopupMenuItem(value: 'notes', child: Text('Rewrite notes')),
+                const PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
+          ],
+        ]),
         body: ListenableBuilder(
           listenable: c,
           builder: (context, _) {
@@ -320,7 +429,12 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
       child: Material(
         color: current ? t.live.withValues(alpha: .12) : (focus ? t.due.withValues(alpha: .14) : Colors.transparent),
         borderRadius: BorderRadius.circular(8),
-        child: pl == null ? row : InkWell(borderRadius: BorderRadius.circular(8), onTap: () => pl.playFrom(l.at), child: row),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: pl == null ? null : () => pl.playFrom(l.at),
+          onLongPress: l.pending || c.convs?.byId(id) == null ? null : () => _editLine(c.convs!.byId(id)!, l),
+          child: row,
+        ),
       ),
     );
   }
