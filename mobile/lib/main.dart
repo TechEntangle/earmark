@@ -7,6 +7,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import 'app_controller.dart';
 import 'ui/lists.dart';
+import 'ui/phone_lists.dart';
 import 'ui/now_screen.dart';
 import 'ui/pair_screen.dart';
 import 'ui/theme.dart';
@@ -132,7 +133,15 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     final c = widget.c;
-    final pages = [NowScreen(c: c), TodayScreen(c: c), TasksScreen(c: c), ConversationsScreen(c: c)];
+    // with transcription on the phone, conversations and tasks come from the phone itself
+    final local = c.asrOn;
+    final pages = [
+      NowScreen(c: c),
+      TodayScreen(c: c),
+      local ? PhoneTasksScreen(c: c) : TasksScreen(c: c),
+      local ? PhoneTalksScreen(c: c) : ConversationsScreen(c: c),
+    ];
+    final open = local ? (c.convs?.tasks.where((k) => !k.done && k.mine).length ?? 0) : c.openTasks;
     return Scaffold(
       body: IndexedStack(index: i, children: [for (var k = 0; k < pages.length; k++) k == i || k == 0 ? pages[k] : const SizedBox()]),
       bottomNavigationBar: NavigationBar(
@@ -145,7 +154,7 @@ class _ShellState extends State<Shell> {
           ),
           const NavigationDestination(icon: Icon(Icons.wb_sunny_outlined), label: 'Today'),
           NavigationDestination(
-            icon: Badge(isLabelVisible: c.openTasks > 0, label: Text('${c.openTasks}'), child: const Icon(Icons.check_box_outlined)),
+            icon: Badge(isLabelVisible: open > 0, label: Text('$open'), child: const Icon(Icons.check_box_outlined)),
             label: 'Tasks',
           ),
           const NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: 'Talks'),

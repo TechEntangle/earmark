@@ -62,3 +62,40 @@ class EarmarkAsr {
   static Future<void> unload() => _ch.invokeMethod('unload');
   static Future<void> deleteModels() => _ch.invokeMethod('deleteModels');
 }
+
+/// Notes and tasks with Apple's on-device model (Foundation Models, iOS 26, Apple Intelligence).
+class NotesError implements Exception {
+  /// unsupported | context | guardrail | busy | language | failed
+  final String code;
+  final String message;
+  const NotesError(this.code, this.message);
+  bool get retryLater => code == 'busy';
+  @override
+  String toString() => message;
+}
+
+class EarmarkNotes {
+  static const _ch = MethodChannel('earmark/notes');
+
+  /// available | notEligible | notEnabled | notReady | unsupported
+  static Future<String> availability() async {
+    if (!Platform.isIOS) return 'unsupported';
+    try {
+      final m = Map<String, dynamic>.from(await _ch.invokeMethod('availability') as Map);
+      return '${m['state']}';
+    } on MissingPluginException {
+      return 'unsupported';
+    }
+  }
+
+  /// [lines]: "[mm:ss] text", optionally starting with ★ (earmarked) or ◆ (asked to save a task).
+  static Future<Map<String, dynamic>> notes(List<String> lines, {String header = ''}) async {
+    try {
+      return Map<String, dynamic>.from(await _ch.invokeMethod('notes', {'lines': lines, 'header': header}) as Map);
+    } on PlatformException catch (e) {
+      throw NotesError(e.code, e.message ?? e.code);
+    } on MissingPluginException {
+      throw const NotesError('unsupported', 'Notes on the phone are not available here');
+    }
+  }
+}

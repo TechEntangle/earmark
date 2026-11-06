@@ -1,5 +1,5 @@
 // What this phone heard: the on-device transcript of every recording chunk, kept on the phone
-// (one JSON line per chunk, one file per day, a week of history).
+// (one JSON line per chunk, one file per day, 30 days of history).
 import 'dart:convert';
 import 'dart:io';
 
@@ -40,7 +40,7 @@ class Heard {
   final Set<int> _seqs = {};
   final Map<String, List<HeardChunk>> _days = {};
 
-  Heard(this.dir, {this.keepDays = 7}) {
+  Heard(this.dir, {this.keepDays = 30}) {
     dir.createSync(recursive: true);
     _prune();
     for (final f in _files()) {
@@ -70,6 +70,15 @@ class Heard {
     (_days[day] ??= []).add(c);
     _days[day]!.sort((a, b) => a.start.compareTo(b.start));
     _seqs.add(c.seq);
+  }
+
+  /// Every chunk, oldest first.
+  List<HeardChunk> all() {
+    final out = <HeardChunk>[];
+    for (final d in (_days.keys.toList()..sort())) {
+      out.addAll(_days[d]!);
+    }
+    return out;
   }
 
   /// Days with anything heard, newest first.

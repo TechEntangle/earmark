@@ -17,6 +17,7 @@ import 'core/config.dart';
 import 'pendant/pendant_service.dart';
 import 'pendant/protocol.dart';
 import 'recorder/chunk_store.dart';
+import 'notes/conversations.dart';
 import 'transcribe/heard.dart';
 
 /// The on-device speech engine (swappable in tests).
@@ -26,6 +27,8 @@ class LocalAsr {
   Future<void> prepare() => EarmarkAsr.prepare();
   Future<AsrResult> transcribe(String path, {String? prev}) => EarmarkAsr.transcribe(path, prev: prev);
   Future<void> deleteModels() => EarmarkAsr.deleteModels();
+  Future<String> notesAvailability() => EarmarkNotes.availability();
+  Future<Map<String, dynamic>> notes(List<String> lines, {String header = ''}) => EarmarkNotes.notes(lines, header: header);
 }
 
 const appVersion = '0.1.0';
@@ -51,6 +54,15 @@ class EarmarkController extends ChangeNotifier {
   String? asrError;
 
   bool get asrOn => transcribeHere && asrEngine.supported;
+
+  // ---- conversations, notes and tasks made on this phone
+  Conversations? convs;
+  /// Apple's on-device model: available | notEligible | notEnabled | notReady | unsupported | unknown
+  String notesState = 'unknown';
+  bool _writingNotes = false;
+  final List<double> earmarks = []; // epoch seconds, kept with what was heard
+  File? _earmarksFile;
+  bool get notesOn => asrOn && notesState == 'available';
 
   Pairing? pairing;
   Api? api;
@@ -165,6 +177,7 @@ class EarmarkController extends ChangeNotifier {
   /// The app came to the screen or left it.
   void setForeground(bool on) {
     pendant.foreground = on;
+    if (on && notesState != 'available') unawaited(_checkNotes());
     if (on && holding && !pendant.connected) {
       pendant.reconnectNow();
       unawaited(heartbeat());
@@ -198,6 +211,11 @@ class EarmarkController extends ChangeNotifier {
     paused = await config.paused();
     _lastHeld = await config.lastHeld();
     heard = Heard(Directory('${docs.path}/heard'));
+    convs = Conversations(File('${docs.path}/conversations.json'));
+    _earmarksFile = File('${docs.path}/heard/earmarks.json');
+    try {
+      earmarks.addAll([for (final x in jsonDecode(_earmarksFile!.readAsStringSync()) as List) (x as num).toDouble()]);
+    } catch (_) {}
     transcribeHere = await config.transcribeHere();
     pairing = await config.pairing();
     if (pairing != null) api = Api(pairing!.server, pairing!.token);
@@ -212,8 +230,10 @@ class EarmarkController extends ChangeNotifier {
     _beat = Timer.periodic(const Duration(seconds: 30), (_) => heartbeat());
     _pump = Timer.periodic(const Duration(seconds: 5), (_) async {
       await transcribePending();
+      await processConversations();
       await pumpUploads();
     });
+    unawaited(_checkNotes());
     unawaited(heartbeat());
     if (asrOn) unawaited(prepareAsr());
   }
@@ -298,6 +318,72 @@ class EarmarkController extends ChangeNotifier {
       c.file.copySync(_prevFile.path);
       _prevMeta.writeAsStringSync('${c.seq} ${c.startMicros}');
     } catch (_) {}
+  }
+
+  Future<void> _checkNotes() async {
+    try {
+      notesState = await asrEngine.notesAvailability();
+    } catch (_) {
+      notesState = 'unsupported';
+    }
+    notifyListeners();
+  }
+
+  /// Group what was heard into conversations and write notes for the ones that have ended,
+  /// one at a time, while the app is on screen (the on-device model is for the foreground).
+  Future<void> processConversations({DateTime? now}) async {
+    final cs = convs, h = heard;
+    if (cs == null || h == null || !asrOn) return;
+    final gap = (macSettings['session_gap_seconds'] as num?)?.toDouble() ?? 90;
+    if (cs.sync(h, gap: gap, now: (now ?? DateTime.now()).millisecondsSinceEpoch / 1000)) {
+      cs.save();
+      notifyListeners();
+    }
+    if (!notesOn || _writingNotes || !pendant.foreground) return;
+    final next = cs.all.reversed.where((c) => c.status == 'pending').firstOrNull; // oldest first
+    if (next == null) return;
+    _writingNotes = true;
+    try {
+      final when = next.startTime;
+      final header = 'The recording started ${_weekday(when)} ${when.day}/${when.month}/${when.year} at '
+          '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}.';
+      final n = await asrEngine.notes(Conversations.promptLines(next, h, earmarks), header: header);
+      Conversations.applyNotes(next, n);
+    } on NotesError catch (e) {
+      if (!e.retryLater) {
+        next.attempts++;
+        next.error = e.message;
+        if (e.code == 'guardrail' || e.code == 'language' || next.attempts >= 2) next.status = 'failed';
+      }
+    } catch (e) {
+      next.attempts++;
+      next.error = '$e';
+      if (next.attempts >= 2) next.status = 'failed';
+    } finally {
+      _writingNotes = false;
+      cs.save();
+      notifyListeners();
+    }
+  }
+
+  static String _weekday(DateTime t) => const ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][t.weekday - 1];
+
+  /// Tick a phone task done or not done.
+  void setTaskDone(ConvTask t, bool done) {
+    t.done = done;
+    convs?.save();
+    notifyListeners();
+  }
+
+  /// Write a conversation's notes again (e.g. after it failed).
+  void retryNotes(Conversation c) {
+    c
+      ..status = 'pending'
+      ..attempts = 0
+      ..error = null;
+    convs?.save();
+    notifyListeners();
+    unawaited(processConversations());
   }
 
   /// Whether a chunk must wait for its transcript before being sent (and deleted).
@@ -403,6 +489,12 @@ class EarmarkController extends ChangeNotifier {
       return;
     }
     lastEarmark = at;
+    earmarks.add(at.millisecondsSinceEpoch / 1000);
+    final cutoff = DateTime.now().subtract(const Duration(days: 30)).millisecondsSinceEpoch / 1000;
+    earmarks.removeWhere((m) => m < cutoff);
+    try {
+      _earmarksFile?.writeAsStringSync(jsonEncode(earmarks));
+    } catch (_) {}
     notifyListeners();
     unawaited(pendant.buzz(Buzz.earmark));
     _queueEvent('earmark', at);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
+import 'phone_lists.dart';
 import 'theme.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -52,6 +53,13 @@ class SettingsScreen extends StatelessWidget {
                   onChanged: c.setTranscribeHere,
                 ),
                 if (c.transcribeHere) ...[
+                  const Divider(),
+                  ListTile(
+                    title: const Text('Notes and tasks'),
+                    subtitle: Text(c.notesState == 'available'
+                        ? "Written on this iPhone by Apple's on-device model"
+                        : notesHint(c), style: tt.bodySmall),
+                  ),
                   const Divider(),
                   ListTile(
                     title: const Text('Speech model'),

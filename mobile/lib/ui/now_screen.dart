@@ -7,6 +7,7 @@ import '../app_controller.dart';
 import '../pendant/pendant_service.dart';
 import 'heard_screen.dart';
 import 'lists.dart';
+import 'phone_lists.dart';
 import 'settings_screen.dart';
 import 'theme.dart';
 
@@ -92,11 +93,12 @@ class _NowScreenState extends State<NowScreen> {
             ),
             const Spacer(),
             TextButton(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ConversationsScreen(c: c))),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => c.asrOn ? PhoneTalksScreen(c: c) : ConversationsScreen(c: c))),
               child: const Text('All'),
             ),
           ]),
-          _Latest(key: const ValueKey('latestList'), c: c, gen: _gen),
+          if (c.asrOn) PhoneLatest(c: c) else _Latest(key: const ValueKey('latestList'), c: c, gen: _gen),
         ]),
       ),
     );

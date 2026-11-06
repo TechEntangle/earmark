@@ -24,6 +24,7 @@ public final class EarmarkAsrPlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "earmark/asr", binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(EarmarkAsrPlugin(), channel: channel)
+        NotesChannel.register(with: registrar)
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
