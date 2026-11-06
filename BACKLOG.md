@@ -7,7 +7,6 @@ each section. Status: **now** (being built), **next**, **later**, **idea**, **do
 ## Now
 - **Voice recognition on the iPhone**: who spoke when (FluidAudio diarizer), voices named once and
   recognised after; "Me" suggested from the loudest voice; names flow into notes and task owners.
-- **Compare with the Omi app**: feature inventory and gaps.
 
 ## Next
 - **Ask**: questions over everything heard, answered on the phone with links to the exact moment.
@@ -17,6 +16,10 @@ each section. Status: **now** (being built), **next**, **later**, **idea**, **do
   open tasks; conversations findable in iPhone search; Action button to earmark.
 - **Tasks into Apple Reminders** with due dates and real alerts ("remind me at 5 pm").
 - **Bring Mac voices to the phone**: re-learn from conversations already named on the Mac.
+
+- **Edit conversations**: rename, delete, star, merge two, fix a transcript line or its speaker.
+- **Custom vocabulary**: names and terms you use (colleagues, products, acronyms) so they're spelled right.
+- **Ask from the pendant**: press, ask a question out loud, hear the answer in your AirPods.
 
 ## Later
 - **Commitments tracker**: who owes me what, what I owe whom, gentle nudges when overdue.
@@ -37,9 +40,27 @@ each section. Status: **now** (being built), **next**, **later**, **idea**, **do
 - **Android build** of the same app (emulator first).
 - **TestFlight** distribution instead of installing from Xcode.
 
+- **Memories about you**: facts and preferences learnt from conversations, each linked to its source.
+- **Daily recap at night** and **goals** (daily/monthly) that notes and Ask take into account.
+- **Share and export**: a conversation's audio, transcript or summary; export everything as JSON.
+- **Folders / categories** for conversations, set automatically.
+- **Calendar events** pulled from conversations ("let's meet Thursday at 3").
+- **Pendant care**: battery history, low-battery and fully-charged alerts, mic gain, LED, firmware updates.
+- **Quick actions and widgets**: long-press app icon (Ask, Earmark, Pause), home-screen widgets.
+
 ## Ideas (to discuss)
 - Media detection: skip stretches that are a video/podcast playing, not people talking.
 - Weekly reflection: time in meetings, recurring themes, people seen most.
+
+## Omi app comparison (6 Nov 2026, Omi app 1.0.586)
+Where Earmark is already ahead: audio, transcripts, notes and tasks never leave your devices (Omi's
+summaries, memories and chat run on Omi's servers; its fully local mode is still behind a flag); no
+monthly caps or subscription (Omi Pro is $29.99/month; free has 5 h cloud recording and 30 questions);
+Mac backup with full Whisper for Marathi/Hindi/Urdu/Arabic; crash-safe recording with handoff.
+Where Omi is ahead: speaker naming and people (building now), Ask with tools and citations (next),
+conversation editing, custom vocabulary, memories, daily recap, goals, Reminders/Calendar, sharing and
+export, widgets/Siri, pendant care (OTA, battery history), integrations (we keep these optional/local).
+Things not to copy: cloud processing, public share links, third-party app store with raw-audio access.
 
 ## Done
 - Pendant on the iPhone with crash-safe recording; Mac as backup with handoff ("Use this iPhone").
@@ -47,5 +68,6 @@ each section. Status: **now** (being built), **next**, **later**, **idea**, **do
 - English transcription on the iPhone (Parakeet); other languages detected and translated by the Mac.
 - Conversations, notes and tasks on the iPhone (Apple's on-device model); spoken "remind me" tasks.
 - Audio playback on the iPhone (30 days kept), tap a line to play from there.
+- Comparison with the Omi app (see above).
 - Mac: speaker identification with voice signatures, line splitting at speaker changes, estate re-run,
   on-demand models, phone access over Tailscale, web app.
