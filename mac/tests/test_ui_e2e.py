@@ -652,6 +652,7 @@ def test_phone_transcript_is_used_instead_of_the_macs(server):
     texts = [g["text"] for g in full["segments"]]
     assert texts == ["Phone heard this.", "Second sentence."], texts
     assert full["segments"][0]["words"][0][2] == "Phone"
+    assert full["transcribed_by"] == "iphone" and s["transcribed_by"] == "iphone"
 
 
 def test_phone_forwards_the_pendants_own_memory(server):

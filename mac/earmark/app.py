@@ -214,7 +214,8 @@ def init_db():
         """)
         cols = {r[1] for r in c.execute("PRAGMA table_info(sessions)")}
         for col, ddl in (("notes_json", "TEXT"), ("kind", "TEXT"), ("intel_status", "TEXT"), ("intel_error", "TEXT"),
-                         ("spk_status", "TEXT"), ("spk_json", "TEXT"), ("spk_error", "TEXT"), ("words_status", "TEXT")):
+                         ("spk_status", "TEXT"), ("spk_json", "TEXT"), ("spk_error", "TEXT"), ("words_status", "TEXT"),
+                         ("transcribed_by", "TEXT")):
             if col not in cols:
                 c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {ddl}")
         c.execute("UPDATE sessions SET status='queued' WHERE status='transcribing'")
@@ -703,9 +704,11 @@ async def process_queue(cfg: dict):
             note = PL.write_note(NOTES_DIR, title, row["started_at"], row["duration_s"], summary, tr)
             with db() as c:
                 c.execute("UPDATE sessions SET status='done', intel_status='pending', title=?, language=?, transcript_json=?,"
-                          " summary_md=?, note_path=?, error=NULL, spk_status=?, spk_json=NULL, words_status='done' WHERE id=?",
+                          " summary_md=?, note_path=?, error=NULL, spk_status=?, spk_json=NULL, words_status='done',"
+                          " transcribed_by=? WHERE id=?",
                           (title, tr["language"], json.dumps(tr["segments"]), summary, str(note),
-                           "pending" if cfg.get("identify_speakers", True) else "off", sid))
+                           "pending" if cfg.get("identify_speakers", True) else "off",
+                           "iphone" if tr.get("engine") == "iphone" else "mac", sid))
             S.say(f"transcript ready: {label}" + (" (transcribed on the iPhone)" if tr.get("engine") == "iphone" else ""))
         except Exception as e:
             with db() as c:
@@ -1677,7 +1680,7 @@ def _session_card(r) -> dict:
     n = json.loads(r["notes_json"]) if r["notes_json"] else None
     return {"id": r["id"], "started_at": r["started_at"], "ended_at": r["ended_at"], "duration_s": r["duration_s"],
             "title": r["title"], "kind": r["kind"], "status": r["status"], "intel_status": r["intel_status"],
-            "source": r["source"], "language": r["language"],
+            "source": r["source"], "language": r["language"], "transcribed_by": r["transcribed_by"],
             "gist": (n or {}).get("summary", "")[:220] if n else None,
             "people": (n or {}).get("people", []) if n else [],
             "topics": (n or {}).get("topics", []) if n else [],

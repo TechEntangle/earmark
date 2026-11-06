@@ -759,6 +759,7 @@ function convHtml(s) {
   else if (s.intel_status === 'error') chips.push('<span class="chip err">Notes failed</span>');
   if (s.kind && ready) chips.push(`<span class="chip">${KIND[s.kind] || s.kind}</span>`);
   chips.push(`<span class="chip num">${dur(s.duration_s)}</span>`);
+  if (s.transcribed_by === 'iphone') chips.push('<span class="chip" title="Transcribed on the iPhone">iPhone</span>');
   if (s.task_count) chips.push(`<span class="chip task">${s.task_count} task${s.task_count > 1 ? 's' : ''}</span>`);
   if (s.earmark_count) chips.push(`<span class="chip mark">${s.earmark_count} earmark${s.earmark_count > 1 ? 's' : ''}</span>`);
   if (s.people && s.people.length) chips.push(`<span class="chip">${esc(s.people.slice(0, 3).join(', '))}${s.people.length > 3 ? ' +' + (s.people.length - 3) : ''}</span>`);
@@ -877,6 +878,7 @@ async function viewConversation(id, at, tab) {
   const day = isoDay(new Date(s.started_at * 1000));
   const meta = [`<span>${new Date(s.started_at * 1000).toLocaleString([], {weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'})}</span>`,
     `<span class="chip num">${dur(s.duration_s)}</span>`,
+    s.transcribed_by === 'iphone' ? '<span class="chip">Transcribed on iPhone</span>' : s.transcribed_by === 'mac' ? '<span class="chip">Transcribed on Mac</span>' : '',
     s.kind ? `<span class="chip"><span class="kdot ${s.kind}"></span>${KIND[s.kind] || s.kind}</span>` : '',
     (() => { const named = (s.speakers || []).filter(x => x.name && (x.state === 'confirmed' || x.state === 'auto') && !x.is_me).map(x => x.name);
       return named.length ? `<span class="chip">with ${esc(named.join(', '))}</span>` : n && n.people && n.people.length ? `<span class="chip">${esc(n.people.join(', '))}</span>` : ''; })(),
