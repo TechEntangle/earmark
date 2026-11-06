@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../app_controller.dart';
 import '../pendant/pendant_service.dart';
+import 'heard_screen.dart';
 import 'lists.dart';
 import 'settings_screen.dart';
 import 'theme.dart';
@@ -82,6 +83,7 @@ class _NowScreenState extends State<NowScreen> {
               ]),
             ),
           ],
+          if (c.asrOn) ...[const SizedBox(height: 14), HeardCard(c: c)],
           const SizedBox(height: 28),
           Row(children: [
             Padding(

@@ -16,6 +16,8 @@ dependencies:
   flutter_foreground_task: ^11.0.3    # Android: keep recording with the screen off
   permission_handler: ^13.0.2
   intl: ^0.20.3
+  earmark_asr:                        # on-device speech to text (iOS: Parakeet via FluidAudio)
+    path: packages/earmark_asr
 
 dev_dependencies:
   flutter_test:

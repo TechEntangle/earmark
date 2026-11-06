@@ -105,6 +105,11 @@ class Api {
     return Map<String, dynamic>.from(r as Map);
   }
 
+  /// This phone's transcript of one chunk (sent just before the chunk's audio).
+  Future<void> uploadTranscript({required int seq, required double start, required double seconds, required String text,
+          required List<List<Object>> words}) =>
+      post('/api/app/transcript', {'seq': seq, 'start': start, 'seconds': seconds, 'text': text, 'words': words, 'engine': 'parakeet-v2-coreml'});
+
   Future<void> event(String type, {DateTime? at}) => post('/api/app/event',
       {'type': type, 'at': (at ?? DateTime.now()).millisecondsSinceEpoch / 1000});
 

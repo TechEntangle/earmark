@@ -7,7 +7,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:earmark_asr/earmark_asr.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/api.dart';
@@ -15,6 +17,16 @@ import 'core/config.dart';
 import 'pendant/pendant_service.dart';
 import 'pendant/protocol.dart';
 import 'recorder/chunk_store.dart';
+import 'transcribe/heard.dart';
+
+/// The on-device speech engine (swappable in tests).
+class LocalAsr {
+  bool get supported => EarmarkAsr.supported;
+  Future<AsrStatus> status() => EarmarkAsr.status();
+  Future<void> prepare() => EarmarkAsr.prepare();
+  Future<AsrResult> transcribe(String path, {String? prev}) => EarmarkAsr.transcribe(path, prev: prev);
+  Future<void> deleteModels() => EarmarkAsr.deleteModels();
+}
 
 const appVersion = '0.1.0';
 
@@ -23,9 +35,22 @@ enum Link { unknown, online, offline, unpaired }
 class EarmarkController extends ChangeNotifier {
   final ConfigStore config;
   final PendantService pendant;
-  EarmarkController({ConfigStore? config, PendantService? pendant})
+  final LocalAsr asrEngine;
+  EarmarkController({ConfigStore? config, PendantService? pendant, LocalAsr? asr})
       : config = config ?? ConfigStore(),
-        pendant = pendant ?? PendantService();
+        pendant = pendant ?? PendantService(),
+        asrEngine = asr ?? LocalAsr();
+
+  // ---- transcription on this phone (the primary transcript; the Mac is the backup)
+  /// The user's choice (Settings): transcribe here.
+  bool transcribeHere = true;
+  AsrStatus asr = const AsrStatus('idle');
+  Heard? heard;
+  Timer? _asrPoll;
+  bool _transcribing = false;
+  String? asrError;
+
+  bool get asrOn => transcribeHere && asrEngine.supported;
 
   Pairing? pairing;
   Api? api;
@@ -172,6 +197,8 @@ class EarmarkController extends ChangeNotifier {
     }
     paused = await config.paused();
     _lastHeld = await config.lastHeld();
+    heard = Heard(Directory('${docs.path}/heard'));
+    transcribeHere = await config.transcribeHere();
     pairing = await config.pairing();
     if (pairing != null) api = Api(pairing!.server, pairing!.token);
     pendant.onPaired = (id) => config.savePendantId(id);
@@ -183,8 +210,100 @@ class EarmarkController extends ChangeNotifier {
     notifyListeners();
     if (pairing != null) await startHolding();
     _beat = Timer.periodic(const Duration(seconds: 30), (_) => heartbeat());
-    _pump = Timer.periodic(const Duration(seconds: 5), (_) => pumpUploads());
+    _pump = Timer.periodic(const Duration(seconds: 5), (_) async {
+      await transcribePending();
+      await pumpUploads();
+    });
     unawaited(heartbeat());
+    if (asrOn) unawaited(prepareAsr());
+  }
+
+  // ------------------------------------------------------------ on-device transcription
+  /// Turn transcription on this phone on or off (Settings).
+  Future<void> setTranscribeHere(bool on) async {
+    transcribeHere = on;
+    await config.saveTranscribeHere(on);
+    notifyListeners();
+    if (asrOn) unawaited(prepareAsr());
+  }
+
+  /// Get the speech model ready: downloaded once (~480 MB), then loaded on each start.
+  Future<void> prepareAsr() async {
+    if (!asrOn || asr.ready || asr.busy) return;
+    asrError = null;
+    asr = AsrStatus('downloading', onDisk: asr.onDisk);
+    notifyListeners();
+    _asrPoll?.cancel();
+    _asrPoll = Timer.periodic(const Duration(seconds: 1), (_) => _refreshAsr());
+    try {
+      await asrEngine.prepare();
+    } catch (e) {
+      asrError = e is PlatformException ? (e.message ?? '$e') : '$e';
+    } finally {
+      _asrPoll?.cancel();
+      _asrPoll = null;
+      await _refreshAsr();
+    }
+  }
+
+  Future<void> _refreshAsr() async {
+    try {
+      asr = await asrEngine.status();
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Transcribe finished chunks that have no text yet, oldest first. Runs whether or not the Mac
+  /// is reachable: this phone's transcript is the primary one.
+  Future<void> transcribePending() async {
+    final s = store, h = heard;
+    if (!asrOn || !asr.ready || s == null || h == null || _transcribing) return;
+    _transcribing = true;
+    try {
+      for (final c in s.pending()) {
+        if (h.has(c.seq)) continue;
+        final prev = _asrPrev(c);
+        try {
+          final r = await asrEngine.transcribe(c.file.path, prev: prev?.path);
+          h.add(HeardChunk(c.seq, c.startSeconds, r.seconds, r.text, [for (final w in r.words) w.toJson()]));
+          _keepAsPrev(c);
+          notifyListeners();
+        } catch (e) {
+          // a chunk the engine can't read must not hold up the rest: record it as empty
+          asrError = '$e';
+          h.add(HeardChunk(c.seq, c.startSeconds, 0, '', const []));
+        }
+      }
+    } finally {
+      _transcribing = false;
+    }
+  }
+
+  // The chunk just before (copied aside before it is uploaded and deleted), so a word cut at the
+  // 30-second boundary is heard whole.
+  File get _prevFile => File('${store!.dir.path}/asr_prev.bin');
+  File get _prevMeta => File('${store!.dir.path}/asr_prev.meta');
+
+  File? _asrPrev(Chunk c) {
+    try {
+      final m = _prevMeta.readAsStringSync().split(' ');
+      final seq = int.parse(m[0]), start = int.parse(m[1]);
+      if (seq == c.seq - 1 && c.startMicros - start < 32000000 && _prevFile.existsSync()) return _prevFile;
+    } catch (_) {}
+    return null;
+  }
+
+  void _keepAsPrev(Chunk c) {
+    try {
+      c.file.copySync(_prevFile.path);
+      _prevMeta.writeAsStringSync('${c.seq} ${c.startMicros}');
+    } catch (_) {}
+  }
+
+  /// Whether a chunk must wait for its transcript before being sent (and deleted).
+  bool _awaitsText(Chunk c) {
+    if (!asrOn || heard == null || heard!.has(c.seq)) return false;
+    return asr.ready || (asr.busy && asr.onDisk); // ready, or only loading from disk
   }
 
   @override
@@ -192,6 +311,7 @@ class EarmarkController extends ChangeNotifier {
     _beat?.cancel();
     _pump?.cancel();
     _takeoverBeat?.cancel();
+    _asrPoll?.cancel();
     _frameSub?.cancel();
     _btnSub?.cancel();
     pendant.removeListener(_onPendant);
@@ -437,6 +557,16 @@ class EarmarkController extends ChangeNotifier {
         lastUpload = DateTime.now();
       }
       for (final c in s.pending()) {
+        if (_awaitsText(c)) break; // keep order: send once this chunk has its text
+        final text = heard?.bySeq(c.seq);
+        if (text != null && text.seconds > 0 && !_textSent.contains(c.seq)) {
+          try {
+            await a.uploadTranscript(seq: c.seq, start: c.startSeconds, seconds: text.seconds, text: text.text, words: text.words);
+          } on ApiError catch (e) {
+            if (e.status != 404) rethrow; // an older Mac without this endpoint transcribes by itself
+          }
+          _textSent.add(c.seq);
+        }
         final body = await c.file.readAsBytes();
         if (body.isEmpty) {
           s.markUploaded(c);
@@ -474,6 +604,8 @@ class EarmarkController extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  final Set<int> _textSent = {};
 
   double get queuedSeconds => store?.pendingSeconds() ?? 0;
 }

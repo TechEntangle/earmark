@@ -44,6 +44,10 @@ class ConfigStore {
 
   Future<void> saveLastHeld(DateTime t) => _s.write(key: 'last_held', value: '${t.millisecondsSinceEpoch}');
 
+  /// Transcribe on this phone (on unless turned off).
+  Future<bool> transcribeHere() async => (await _s.read(key: 'transcribe_here')) != '0';
+  Future<void> saveTranscribeHere(bool on) => _s.write(key: 'transcribe_here', value: on ? '1' : '0');
+
   Future<bool> paused() async => (await _s.read(key: 'paused')) == '1';
   Future<void> savePaused(bool p) => _s.write(key: 'paused', value: p ? '1' : '0');
 }

@@ -37,6 +37,39 @@ class SettingsScreen extends StatelessWidget {
               ),
             ]),
           ),
+          if (c.asrEngine.supported) ...[
+            const SizedBox(height: 14),
+            Panel(
+              padding: EdgeInsets.zero,
+              child: Column(children: [
+                SwitchListTile(
+                  key: const Key('asrSwitch'),
+                  title: const Text('Transcribe on this iPhone'),
+                  subtitle: Text(
+                      'Text appears here within seconds, with or without your Mac. Uses a 480 MB speech model that stays on the phone.',
+                      style: tt.bodySmall),
+                  value: c.transcribeHere,
+                  onChanged: c.setTranscribeHere,
+                ),
+                if (c.transcribeHere) ...[
+                  const Divider(),
+                  ListTile(
+                    title: const Text('Speech model'),
+                    subtitle: Text(switch (c.asr.state) {
+                      'ready' => 'Ready · Parakeet (English), on the Neural Engine',
+                      'downloading' => 'Downloading · ${(c.asr.progress * 100).round()}%',
+                      'loading' => 'Loading…',
+                      'error' => "Didn't load: ${c.asrError ?? c.asr.error ?? ''}",
+                      _ => c.asr.onDisk ? 'On this phone' : 'Not downloaded yet',
+                    }, style: tt.bodySmall),
+                    trailing: c.asr.state == 'error' || (!c.asr.ready && !c.asr.busy)
+                        ? TextButton(onPressed: c.prepareAsr, child: const Text('Get it'))
+                        : null,
+                  ),
+                ],
+              ]),
+            ),
+          ],
           const SizedBox(height: 14),
           Panel(
             padding: EdgeInsets.zero,
