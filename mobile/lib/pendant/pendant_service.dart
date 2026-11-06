@@ -104,9 +104,13 @@ class PendantService extends ChangeNotifier {
     }
   }
 
+  /// iOS only connects to a pendant this app has seen in a scan since it started
+  /// ("peripheral is unknown"); a remembered id alone is not enough after a restart.
+  bool _seen = false;
+
   void _go() {
     if (!_wanted) return;
-    if (deviceId == null) {
+    if (deviceId == null || (Platform.isIOS && !_seen)) {
       _scan();
     } else {
       _connect();
@@ -122,13 +126,14 @@ class PendantService extends ChangeNotifier {
       if (!_wanted) return;
       // not advertising: someone else (the Mac) has it, or it is away. A remembered pendant
       // gets a pending connection, which completes by itself when it frees up.
-      deviceId == null ? _later(_scan) : _connect();
+      deviceId == null || (Platform.isIOS && !_seen) ? _later(_scan) : _connect();
     });
     _scanSub = ble.scanForDevices(withServices: const [], scanMode: ScanMode.lowLatency, requireLocationServicesEnabled: false).listen((d) {
       if (d.name == deviceName || d.serviceUuids.contains(Uuid.parse(OmiUuids.audioService))) {
         timeout.cancel();
         _scanSub?.cancel();
         _scanSub = null;
+        _seen = true;
         if (d.id != deviceId) {
           deviceId = d.id;
           onPaired?.call(d.id);
