@@ -92,6 +92,11 @@ class _NowScreenState extends State<NowScreen> {
               child: Text('LATEST', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2, color: t.ink2)),
             ),
             const Spacer(),
+            if (c.asrOn)
+              TextButton(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TodayScreen(c: c))),
+                child: const Text('Today'),
+              ),
             TextButton(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => c.asrOn ? PhoneTalksScreen(c: c) : ConversationsScreen(c: c))),

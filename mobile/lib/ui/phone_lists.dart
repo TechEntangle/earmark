@@ -147,14 +147,28 @@ class PhoneConversationScreen extends StatefulWidget {
   final EarmarkController c;
   final int id;
   final AudioBackend? audio; // tests
-  const PhoneConversationScreen({super.key, required this.c, required this.id, this.audio});
+  /// Seconds from the start: highlight and scroll to the line there (from Ask).
+  final double? focusAt;
+  const PhoneConversationScreen({super.key, required this.c, required this.id, this.audio, this.focusAt});
   @override
   State<PhoneConversationScreen> createState() => _PhoneConversationScreenState();
 }
 
 class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
   ConvPlayer? _player;
+  final _focusKey = GlobalKey();
+  bool _focused = false;
   EarmarkController get c => widget.c;
+
+  int _focusIndex(List<Line> lines) {
+    final f = widget.focusAt;
+    if (f == null) return -1;
+    var best = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].at <= f + 0.5) best = i;
+    }
+    return best < 0 && lines.isNotEmpty ? 0 : best;
+  }
   int get id => widget.id;
 
   ConvPlayer? player(Conversation v) {
@@ -181,6 +195,14 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
             final lines = Conversations.lines(v, h);
             final foreign = Conversations.hasForeign(v, h);
             final pl = player(v);
+            final focus = _focusIndex(lines);
+            if (focus >= 0 && !_focused) {
+              _focused = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                final ctx = _focusKey.currentContext;
+                if (ctx != null) Scrollable.ensureVisible(ctx, alignment: .3, duration: const Duration(milliseconds: 300));
+              });
+            }
             return ListView(padding: const EdgeInsets.fromLTRB(20, 0, 20, 32), children: [
               Text(convTitle(c, v), style: tt.headlineMedium),
               const SizedBox(height: 6),
@@ -216,7 +238,7 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
               if (pl == null)
                 for (var i = 0; i < lines.length; i++) ...[
                   if (_turn(lines, i)) _speaker(context, v, lines[i].speaker!),
-                  _line(context, lines[i], null, false),
+                  _line(context, lines[i], null, false, focus: i == focus),
                 ]
               else
                 ListenableBuilder(
@@ -231,7 +253,7 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
                     return Column(children: [
                       for (var i = 0; i < lines.length; i++) ...[
                         if (_turn(lines, i)) _speaker(context, v, lines[i].speaker!),
-                        _line(context, lines[i], pl, i == cur),
+                        _line(context, lines[i], pl, i == cur, focus: i == focus),
                       ],
                     ]);
                   },
@@ -277,7 +299,7 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
     );
   }
 
-  Widget _line(BuildContext context, Line l, ConvPlayer? pl, bool current) {
+  Widget _line(BuildContext context, Line l, ConvPlayer? pl, bool current, {bool focus = false}) {
     final t = context.t;
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
@@ -293,9 +315,10 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
       ]),
     );
     return Padding(
+      key: focus ? _focusKey : null,
       padding: const EdgeInsets.only(bottom: 4),
       child: Material(
-        color: current ? t.live.withValues(alpha: .12) : Colors.transparent,
+        color: current ? t.live.withValues(alpha: .12) : (focus ? t.due.withValues(alpha: .14) : Colors.transparent),
         borderRadius: BorderRadius.circular(8),
         child: pl == null ? row : InkWell(borderRadius: BorderRadius.circular(8), onTap: () => pl.playFrom(l.at), child: row),
       ),

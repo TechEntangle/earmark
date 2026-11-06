@@ -4,12 +4,15 @@
 // Channel "earmark/notes":
 //   availability → {state: available | notEligible | notEnabled | notReady | unsupported}
 //   notes {lines: [String], header: String} → {title, kind, summary, keyPoints, decisions, tasks, people, topics}
+//   embed {texts: [String]} → [[Double]]   sentence vectors (Apple's built-in English sentence embedding, 512-d)
+//   answer {question, excerpts: [String], today} → {answer, sources: [Int]}   (Ask; excerpts numbered from 1)
 //         lines are "[mm:ss] text", optionally starting with ★ (earmarked) or ◆ (asked to save a task)
 //
 // The on-device model has a small context (about 4,000 tokens), so a long conversation is read in
 // parts and the parts' notes are merged.
 import Flutter
 import Foundation
+import NaturalLanguage
 
 #if canImport(FoundationModels)
     import FoundationModels
@@ -43,8 +46,42 @@ final class NotesChannel: NSObject {
                     reply(FlutterError(code: "failed", message: error.localizedDescription, details: String(describing: error)))
                 }
             }
+        case "embed":
+            let args = call.arguments as? [String: Any] ?? [:]
+            let texts = args["texts"] as? [String] ?? []
+            DispatchQueue.global(qos: .userInitiated).async {
+                let out = Embedder.embed(texts)
+                DispatchQueue.main.async { result(out) }
+            }
+        case "answer":
+            let args = call.arguments as? [String: Any] ?? [:]
+            let question = args["question"] as? String ?? ""
+            let excerpts = args["excerpts"] as? [String] ?? []
+            let today = args["today"] as? String ?? ""
+            Task {
+                do {
+                    reply(try await NotesEngine.answer(question: question, excerpts: excerpts, today: today))
+                } catch let e as NotesError {
+                    reply(FlutterError(code: e.code, message: e.message, details: nil))
+                } catch {
+                    reply(FlutterError(code: "failed", message: error.localizedDescription, details: String(describing: error)))
+                }
+            }
         default:
             result(FlutterMethodNotImplemented)
+        }
+    }
+}
+
+/// Sentence vectors with Apple's built-in embedding (on the phone, no download).
+enum Embedder {
+    static let model = NLEmbedding.sentenceEmbedding(for: .english)
+
+    static func embed(_ texts: [String]) -> [[Double]] {
+        guard let m = model else { return texts.map { _ in [] } }
+        return texts.map { t in
+            let s = String(t.prefix(2000))
+            return m.vector(for: s) ?? []
         }
     }
 }
@@ -68,6 +105,15 @@ enum NotesEngine {
             }
         #endif
         return "unsupported"
+    }
+
+    static func answer(question: String, excerpts: [String], today: String) async throws -> [String: Any] {
+        #if canImport(FoundationModels)
+            if #available(iOS 26.0, *) {
+                return try await OnDeviceNotes.answer(question: question, excerpts: excerpts, today: today)
+            }
+        #endif
+        throw NotesError(code: "unsupported", message: "Answers on the iPhone need iOS 26 with Apple Intelligence")
     }
 
     static func notes(lines: [String], header: String) async throws -> [String: Any] {
@@ -147,7 +193,45 @@ enum NotesEngine {
     }
 
     @available(iOS 26.0, *)
+    @Generable
+    struct GenAnswer {
+        @Guide(description: "The answer in 1 to 5 sentences, using only the excerpts. If they don't contain it, say so plainly.")
+        var answer: String
+        @Guide(description: "The numbers of the excerpts the answer relies on")
+        var sources: [Int]
+    }
+
+    @available(iOS 26.0, *)
     enum OnDeviceNotes {
+        static func answer(question: String, excerpts: [String], today: String) async throws -> [String: Any] {
+            guard SystemLanguageModel.default.isAvailable else {
+                throw NotesError(code: "unsupported", message: "Apple Intelligence is not available: \(NotesEngine.availability())")
+            }
+            let rules = """
+                You answer questions about the user's own recorded conversations, using only the numbered excerpts.
+                The user wore the recorder and is "me"/"Me" in the excerpts. Today is \(today).
+                Be direct and specific: names, numbers, dates and who promised what. Cite the excerpts you used.
+                If the excerpts don't answer the question, say you couldn't find it. Never invent anything.
+                """
+            var list = excerpts
+            while true {
+                let numbered = list.enumerated().map { "[\($0.offset + 1)] \($0.element)" }.joined(separator: "\n\n")
+                let session = LanguageModelSession(instructions: rules)
+                do {
+                    let r = try await session.respond(
+                        to: "Question: \(question)\n\nExcerpts:\n\(numbered)", generating: GenAnswer.self, options: options
+                    ).content
+                    return ["answer": r.answer, "sources": r.sources.filter { $0 >= 1 && $0 <= list.count }]
+                } catch let e as LanguageModelSession.GenerationError {
+                    if case .exceededContextWindowSize = e, list.count > 2 {
+                        list = Array(list.prefix(list.count * 2 / 3))
+                        continue
+                    }
+                    throw map(e)
+                }
+            }
+        }
+
         static let rules = """
             You turn transcripts from a wearable voice recorder into precise notes. The person wearing the recorder is "me".
             Lines are [mm:ss] timestamps followed by speech; work out who is speaking from the back-and-forth.

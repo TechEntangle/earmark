@@ -7,6 +7,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import 'app_controller.dart';
 import 'ui/lists.dart';
+import 'ui/ask_screen.dart';
 import 'ui/phone_lists.dart';
 import 'ui/now_screen.dart';
 import 'ui/pair_screen.dart';
@@ -137,7 +138,7 @@ class _ShellState extends State<Shell> {
     final local = c.asrOn;
     final pages = [
       NowScreen(c: c),
-      TodayScreen(c: c),
+      local ? AskScreen(c: c) : TodayScreen(c: c),
       local ? PhoneTasksScreen(c: c) : TasksScreen(c: c),
       local ? PhoneTalksScreen(c: c) : ConversationsScreen(c: c),
     ];
@@ -152,7 +153,9 @@ class _ShellState extends State<Shell> {
             icon: Icon(c.pendant.connected && !c.paused ? Icons.radio_button_checked : Icons.radio_button_unchecked),
             label: 'Now',
           ),
-          const NavigationDestination(icon: Icon(Icons.wb_sunny_outlined), label: 'Today'),
+          local
+              ? const NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), label: 'Ask')
+              : const NavigationDestination(icon: Icon(Icons.wb_sunny_outlined), label: 'Today'),
           NavigationDestination(
             icon: Badge(isLabelVisible: open > 0, label: Text('$open'), child: const Icon(Icons.check_box_outlined)),
             label: 'Tasks',

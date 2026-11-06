@@ -105,6 +105,23 @@ class EarmarkNotes {
     }
   }
 
+  /// Sentence vectors (Apple's built-in English sentence embedding); an empty list where none.
+  static Future<List<List<double>>> embed(List<String> texts) async {
+    final r = await _ch.invokeMethod('embed', {'texts': texts}) as List;
+    return [for (final v in r) [for (final x in v as List) (x as num).toDouble()]];
+  }
+
+  /// Answer [question] from numbered [excerpts]; sources are excerpt numbers from 1.
+  static Future<(String, List<int>)> answer(String question, List<String> excerpts, {String today = ''}) async {
+    try {
+      final m = Map<String, dynamic>.from(
+          await _ch.invokeMethod('answer', {'question': question, 'excerpts': excerpts, 'today': today}) as Map);
+      return ('${m['answer'] ?? ''}', [for (final x in (m['sources'] as List? ?? [])) (x as num).toInt()]);
+    } on PlatformException catch (e) {
+      throw NotesError(e.code, e.message ?? e.code);
+    }
+  }
+
   /// [lines]: "[mm:ss] text", optionally starting with ★ (earmarked) or ◆ (asked to save a task).
   static Future<Map<String, dynamic>> notes(List<String> lines, {String header = ''}) async {
     try {

@@ -17,9 +17,21 @@ import 'core/config.dart';
 import 'pendant/pendant_service.dart';
 import 'pendant/protocol.dart';
 import 'recorder/chunk_store.dart';
+import 'ask/ask_index.dart';
 import 'notes/conversations.dart';
 import 'notes/voices.dart';
 import 'transcribe/heard.dart';
+
+class AskAnswer {
+  final String question;
+  /// The answer (null when Apple Intelligence isn't available: then only the passages)
+  final String? text;
+  final List<(Passage, double)> hits;
+  /// Passages the answer cites (numbers from 1, as in [hits])
+  final List<int> used;
+  final String? error;
+  const AskAnswer(this.question, this.text, this.hits, this.used, {this.error});
+}
 
 /// The on-device speech engine (swappable in tests).
 class LocalAsr {
@@ -32,6 +44,9 @@ class LocalAsr {
   bool get speakersSupported => EarmarkSpeakers.supported;
   Future<Diarization> diarize(List<String> paths, List<double> offsets) => EarmarkSpeakers.diarize(paths, offsets);
   Future<String> notesAvailability() => EarmarkNotes.availability();
+  Future<List<List<double>>> embed(List<String> texts) => EarmarkNotes.embed(texts);
+  Future<(String, List<int>)> answer(String q, List<String> excerpts, {String today = ''}) =>
+      EarmarkNotes.answer(q, excerpts, today: today);
   Future<Map<String, dynamic>> notes(List<String> lines, {String header = ''}) => EarmarkNotes.notes(lines, header: header);
 }
 
@@ -62,6 +77,8 @@ class EarmarkController extends ChangeNotifier {
   // ---- conversations, notes and tasks made on this phone
   Conversations? convs;
   VoiceBook? voiceBook;
+  AskIndex? askIndex;
+  bool _indexing = false;
   /// Apple's on-device model: available | notEligible | notEnabled | notReady | unsupported | unknown
   String notesState = 'unknown';
   bool _writingNotes = false;
@@ -218,6 +235,7 @@ class EarmarkController extends ChangeNotifier {
     heard = Heard(Directory('${docs.path}/heard'));
     convs = Conversations(File('${docs.path}/conversations.json'));
     voiceBook = VoiceBook(File('${docs.path}/voices.json'));
+    askIndex = AskIndex(Directory('${docs.path}/ask'));
     _earmarksFile = File('${docs.path}/heard/earmarks.json');
     try {
       earmarks.addAll([for (final x in jsonDecode(_earmarksFile!.readAsStringSync()) as List) (x as num).toDouble()]);
@@ -240,6 +258,7 @@ class EarmarkController extends ChangeNotifier {
       await processConversations();
       await pumpUploads();
       await fillFromMac();
+      await updateAskIndex();
     });
     unawaited(_checkNotes());
     unawaited(heartbeat());
@@ -361,7 +380,6 @@ class EarmarkController extends ChangeNotifier {
     }
     if (_writingNotes || !pendant.foreground) return;
     // who spoke when, before the notes (so tasks get the right owner)
-    final nowS0 = (now ?? DateTime.now()).millisecondsSinceEpoch / 1000;
     final unheard = cs.all.reversed
         .where((c) => c.status == 'pending' && c.spk == null && !Conversations.awaitingMac(c, h))
         .firstOrNull;
@@ -517,6 +535,65 @@ class EarmarkController extends ChangeNotifier {
   void forgetVoice(String name) {
     voiceBook?.forget(name);
     notifyListeners();
+  }
+
+  /// Keep Ask's index up to date (a few conversations at a time, while the app is on screen).
+  Future<void> updateAskIndex({int limit = 3}) async {
+    final ix = askIndex, cs = convs, h = heard;
+    if (ix == null || cs == null || h == null || _indexing || !asrOn || !asrEngine.supported) return;
+    if (!pendant.foreground) return;
+    _indexing = true;
+    try {
+      if (await ix.update(cs.all, h, asrEngine.embed, limit: limit)) notifyListeners();
+    } catch (_) {
+    } finally {
+      _indexing = false;
+    }
+  }
+
+  int get askPending => (convs == null || heard == null || askIndex == null) ? 0 : askIndex!.pending(convs!.all, heard!);
+
+  /// Ask a question about everything heard: the best passages, and an answer from Apple's
+  /// on-device model citing them (when Apple Intelligence is available).
+  Future<AskAnswer> ask(String question) async {
+    final ix = askIndex, cs = convs;
+    if (ix == null || cs == null) return AskAnswer(question, null, const [], const []);
+    await updateAskIndex(limit: 50);
+    final qv = (await asrEngine.embed([question])).firstOrNull ?? const <double>[];
+    final hits = ix.search(question, qv);
+    if (hits.isEmpty) return AskAnswer(question, null, const [], const []);
+    if (!notesOn) return AskAnswer(question, null, hits, const []);
+    final excerpts = [
+      for (final (p, _) in hits)
+        () {
+          final c = cs.byId(p.conv);
+          final when = c == null ? '' : _stamp(c.start + p.at);
+          final title = c == null ? '' : convTitleText(c);
+          return '$when · $title\n${p.text}';
+        }(),
+    ];
+    try {
+      final now = DateTime.now();
+      final (text, used) = await asrEngine.answer(question, excerpts,
+          today: '${_weekday(now)} ${now.day}/${now.month}/${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}');
+      return AskAnswer(question, text, hits, used);
+    } on NotesError catch (e) {
+      return AskAnswer(question, null, hits, const [], error: e.message);
+    }
+  }
+
+  static String _stamp(double epoch) {
+    final t = DateTime.fromMillisecondsSinceEpoch((epoch * 1000).round());
+    return '${_weekday(t)} ${t.day}/${t.month} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// A conversation's title for Ask (its notes' title, else its first words).
+  String convTitleText(Conversation c) {
+    if ((c.title ?? '').isNotEmpty) return c.title!;
+    final h = heard;
+    if (h == null) return 'Conversation';
+    final w = Conversations.lines(c, h).map((l) => l.text).join(' ').split(' ');
+    return w.take(8).join(' ');
   }
 
   final Map<int, DateTime> _askedMac = {};
