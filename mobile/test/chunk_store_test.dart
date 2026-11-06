@@ -95,4 +95,21 @@ void main() {
     s.close();
     expect(s.pending().last.seq, 41);
   });
+
+  test('sent chunks are kept for playing back, then pruned', () {
+    final dir = Directory.systemTemp.createTempSync('keep');
+    var now = DateTime(2026, 11, 6).microsecondsSinceEpoch;
+    final s = ChunkStore(dir, chunkSeconds: 1, nowMicros: () => now);
+    for (var i = 0; i < 50; i++) {
+      s.add(Uint8List.fromList([1, 2, 3]));
+      now += 20000;
+    }
+    final c = s.pending().single;
+    s.markUploaded(c);
+    expect(s.pending(), isEmpty);
+    expect(s.fileFor(c.seq, c.startMicros)!.path, contains('/kept/'));
+    now += 31 * 86400 * 1000000;
+    final again = ChunkStore(dir, chunkSeconds: 1, nowMicros: () => now);
+    expect(again.fileFor(c.seq, c.startMicros), isNull, reason: 'older than 30 days');
+  });
 }

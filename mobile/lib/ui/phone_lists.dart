@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../app_controller.dart';
 import '../notes/conversations.dart';
+import 'player.dart';
 import 'theme.dart';
 
 String _hm(DateTime t) => DateFormat.Hm().format(t);
@@ -142,10 +143,30 @@ class PhoneTalksScreen extends StatelessWidget {
 }
 
 /// One conversation: notes, tasks and the transcript, all from this phone.
-class PhoneConversationScreen extends StatelessWidget {
+class PhoneConversationScreen extends StatefulWidget {
   final EarmarkController c;
   final int id;
-  const PhoneConversationScreen({super.key, required this.c, required this.id});
+  final AudioBackend? audio; // tests
+  const PhoneConversationScreen({super.key, required this.c, required this.id, this.audio});
+  @override
+  State<PhoneConversationScreen> createState() => _PhoneConversationScreenState();
+}
+
+class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
+  ConvPlayer? _player;
+  EarmarkController get c => widget.c;
+  int get id => widget.id;
+
+  ConvPlayer? player(Conversation v) {
+    final p = _player ??= ConvPlayer(c, v, audio: widget.audio);
+    return p.available ? p : null;
+  }
+
+  @override
+  void dispose() {
+    _player?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -159,12 +180,14 @@ class PhoneConversationScreen extends StatelessWidget {
             final t = context.t, tt = Theme.of(context).textTheme;
             final lines = Conversations.lines(v, h);
             final foreign = Conversations.hasForeign(v, h);
+            final pl = player(v);
             return ListView(padding: const EdgeInsets.fromLTRB(20, 0, 20, 32), children: [
               Text(convTitle(c, v), style: tt.headlineMedium),
               const SizedBox(height: 6),
               Text('${DateFormat('EEE d MMM, HH:mm').format(v.startTime)}  ·  ${dur(v.seconds)}  ·  On iPhone'
                   '${foreign ? '  ·  Includes non-English, translated on your Mac' : ''}', style: tt.bodySmall),
               const SizedBox(height: 16),
+              if (pl != null) ...[PlayerBar(p: pl), const SizedBox(height: 16)],
               if (v.status == 'ready') ...[
                 if ((v.summary ?? '').isNotEmpty)
                   Text(v.summary!, style: const TextStyle(fontFamily: 'Newsreader', fontSize: 17, height: 1.5)),
@@ -190,23 +213,50 @@ class PhoneConversationScreen extends StatelessWidget {
               ],
               _head(context, 'TRANSCRIPT'),
               if (lines.isEmpty) Text('No words.', style: TextStyle(color: t.ink2)),
-              for (final l in lines)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    SizedBox(width: 50, child: Text(Conversations.clockText(l.at),
-                        style: TextStyle(fontSize: 12, color: t.ink2, height: 1.7, fontFeatures: const [FontFeature.tabularFigures()]))),
-                    Expanded(
-                        child: SelectableText(l.text,
-                            style: TextStyle(fontFamily: 'Newsreader', fontSize: 16.5, height: 1.45,
-                                color: l.pending ? t.ink2 : null,
-                                fontStyle: l.pending || l.translated ? FontStyle.italic : FontStyle.normal))),
-                  ]),
+              if (pl == null)
+                for (final l in lines) _line(context, l, null, false)
+              else
+                ListenableBuilder(
+                  listenable: pl,
+                  builder: (context, _) {
+                    var cur = -1;
+                    if (pl.playing || pl.position > 0) {
+                      for (var i = 0; i < lines.length; i++) {
+                        if (lines[i].at <= pl.position + 0.2) cur = i;
+                      }
+                    }
+                    return Column(children: [for (var i = 0; i < lines.length; i++) _line(context, lines[i], pl, i == cur)]);
+                  },
                 ),
             ]);
           },
         ),
       );
+
+  Widget _line(BuildContext context, Line l, ConvPlayer? pl, bool current) {
+    final t = context.t;
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 46, child: Text(Conversations.clockText(l.at),
+            style: TextStyle(fontSize: 12, color: current ? t.liveInk : t.ink2, height: 1.7,
+                fontFeatures: const [FontFeature.tabularFigures()]))),
+        Expanded(
+            child: Text(l.text,
+                style: TextStyle(fontFamily: 'Newsreader', fontSize: 16.5, height: 1.45,
+                    color: l.pending ? t.ink2 : null,
+                    fontStyle: l.pending || l.translated ? FontStyle.italic : FontStyle.normal))),
+      ]),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: current ? t.live.withValues(alpha: .12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: pl == null ? row : InkWell(borderRadius: BorderRadius.circular(8), onTap: () => pl.playFrom(l.at), child: row),
+      ),
+    );
+  }
 
   Widget _head(BuildContext context, String s) => Padding(
         padding: const EdgeInsets.fromLTRB(0, 22, 0, 8),

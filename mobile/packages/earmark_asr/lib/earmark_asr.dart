@@ -116,3 +116,37 @@ class EarmarkNotes {
     }
   }
 }
+
+class PlayerState {
+  final bool playing;
+  final double position, duration;
+  final String path;
+  const PlayerState({this.playing = false, this.position = 0, this.duration = 0, this.path = ''});
+  static PlayerState from(Object? m) {
+    if (m is! Map) return const PlayerState();
+    return PlayerState(
+        playing: m['playing'] == true,
+        position: (m['position'] as num?)?.toDouble() ?? 0,
+        duration: (m['duration'] as num?)?.toDouble() ?? 0,
+        path: '${m['path'] ?? ''}');
+  }
+}
+
+/// Playing back recordings (iOS).
+class EarmarkAudio {
+  static const _ch = MethodChannel('earmark/audio');
+  static bool get supported => Platform.isIOS;
+
+  /// One WAV from the pendant's chunks, each at its offset (seconds) so times match the transcript.
+  static Future<double> prepare(List<String> paths, List<double> offsets, String out) async {
+    final m = await _ch.invokeMethod('prepare', {'paths': paths, 'offsets': offsets, 'out': out}) as Map;
+    return (m['seconds'] as num).toDouble();
+  }
+
+  static Future<PlayerState> play(String path, {double? at}) async =>
+      PlayerState.from(await _ch.invokeMethod('play', {'path': path, 'at': ?at}));
+  static Future<PlayerState> pause() async => PlayerState.from(await _ch.invokeMethod('pause'));
+  static Future<PlayerState> stop() async => PlayerState.from(await _ch.invokeMethod('stop'));
+  static Future<PlayerState> seek(double at) async => PlayerState.from(await _ch.invokeMethod('seek', {'at': at}));
+  static Future<PlayerState> state() async => PlayerState.from(await _ch.invokeMethod('state'));
+}

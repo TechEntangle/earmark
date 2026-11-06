@@ -8,7 +8,9 @@ import 'package:earmark/core/config.dart';
 import 'package:earmark/notes/conversations.dart';
 import 'package:earmark/pendant/pendant_service.dart';
 import 'package:earmark/transcribe/heard.dart';
+import 'package:earmark/recorder/chunk_store.dart';
 import 'package:earmark/ui/phone_lists.dart';
+import 'package:earmark/ui/player.dart';
 import 'package:earmark/ui/theme.dart';
 import 'package:earmark_asr/earmark_asr.dart';
 import 'package:flutter/material.dart';
@@ -33,6 +35,38 @@ class FakeEngine extends LocalAsr {
     if (r is Exception) throw r;
     return r as Map<String, dynamic>;
   }
+}
+
+class FakeAudio extends AudioBackend {
+  final calls = <String>[];
+  bool _playing = false;
+  double _pos = 0;
+  @override
+  bool get supported => true;
+  @override
+  Future<double> prepare(List<String> paths, List<double> offsets, String out) async {
+    calls.add('prepare ${paths.length} ${offsets.join(',')}');
+    return 80;
+  }
+  @override
+  Future<PlayerState> play(String path, {double? at}) async {
+    calls.add('play ${at ?? '-'}');
+    _playing = true;
+    _pos = at ?? _pos;
+    return PlayerState(playing: true, position: _pos, duration: 80, path: path);
+  }
+  @override
+  Future<PlayerState> pause() async {
+    calls.add('pause');
+    _playing = false;
+    return PlayerState(playing: false, position: _pos, duration: 80);
+  }
+  @override
+  Future<PlayerState> state() async => PlayerState(playing: _playing, position: _pos, duration: 80);
+  @override
+  Future<PlayerState> stop() async => const PlayerState();
+  @override
+  Future<PlayerState> seek(double at) async => PlayerState(playing: _playing, position: _pos = at, duration: 80);
 }
 
 class MemConfig extends ConfigStore {
@@ -201,5 +235,41 @@ void main() {
     expect(c.convs!.byId(1)!.status, 'ready');
     expect(engine.prompts.single.last, contains('We will meet the bank on Monday.'));
     c.dispose();
+  });
+
+  testWidgets('playing back a conversation from the audio kept on the phone; a line plays from its time', (t) async {
+    await loadFonts();
+    t.view.physicalSize = const Size(1179, 2556);
+    t.view.devicePixelRatio = 3;
+    final store = ChunkStore(Directory('${dir.path}/rec'));
+    for (final (seq, at) in [(1, t0), (2, t0 + 30), (3, t0 + 60)]) {
+      File('${store.keptDir.path}/${seq}_${(at * 1e6).round()}.chunk').writeAsBytesSync([0, 1, 0]);
+    }
+    final audio = FakeAudio();
+    final c = EarmarkController(config: MemConfig(), pendant: PendantService(), asr: FakeEngine([]))
+      ..heard = heard
+      ..store = store
+      ..convs = Conversations(File('${dir.path}/c3.json'))
+      ..notesState = 'available';
+    c.convs!.sync(heard, gap: 90, now: t0 + 800);
+    Conversations.applyNotes(c.convs!.byId(1)!, Map<String, dynamic>.from(notes));
+    await t.pumpWidget(MaterialApp(theme: earmarkTheme(Brightness.dark), home: PhoneConversationScreen(c: c, id: 1, audio: audio)));
+    expect(find.byKey(const Key('playerBar')), findsOneWidget);
+    await t.runAsync(() async {
+      await t.tap(find.byKey(const Key('playBtn')));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await t.pump();
+    expect(audio.calls.take(2), ['prepare 3 0.0,30.0,60.0', 'play -']);
+    await t.ensureVisible(find.text('Sam will send it by Thursday.'));
+    await t.runAsync(() async {
+      await t.tap(find.text('Sam will send it by Thursday.'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await t.pump();
+    expect(audio.calls.last, 'play 32.0');
+    await expectLater(find.byType(PhoneConversationScreen), matchesGoldenFile('goldens/phone_playback.png'));
+    await t.pumpWidget(const SizedBox());
+    t.view.resetPhysicalSize();
   });
 }
