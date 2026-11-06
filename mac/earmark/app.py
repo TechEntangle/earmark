@@ -120,7 +120,9 @@ def save_config(cfg: dict):
 
 
 def db() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH)
+    # several threads write (phone uploads, transcription, speakers, notes): wait for a busy
+    # database instead of failing with "database is locked"
+    c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
     return c
 
@@ -129,6 +131,7 @@ def init_db():
     for d in (RAW_DIR, WAV_DIR, NOTES_DIR):
         d.mkdir(parents=True, exist_ok=True)
     with db() as c:
+        c.execute("PRAGMA journal_mode=WAL")          # readers no longer block the writer
         c.executescript("""
         CREATE TABLE IF NOT EXISTS sessions(
             id INTEGER PRIMARY KEY,
@@ -215,7 +218,7 @@ def init_db():
             if col not in cols:
                 c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {ddl}")
         c.execute("UPDATE sessions SET status='queued' WHERE status='transcribing'")
-        c.execute("UPDATE sessions SET status='queued', error=NULL WHERE status='error' AND error LIKE '%Stream(%'")
+        c.execute("UPDATE sessions SET status='queued', error=NULL WHERE status='error' AND (error LIKE '%Stream(%' OR error LIKE '%database is locked%')")
         c.execute("UPDATE sessions SET intel_status='pending' WHERE status='done' AND intel_status IS NULL")
         c.execute("UPDATE sessions SET intel_status='pending' WHERE intel_status='working'")
         c.execute("UPDATE sessions SET spk_status='pending' WHERE spk_status='working'")
