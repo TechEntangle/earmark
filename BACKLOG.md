@@ -5,13 +5,11 @@ backup and does the heavy lifting (other languages, full Whisper). Newest decisi
 each section. Status: **now** (being built), **next**, **later**, **idea**, **done**.
 
 ## Now
-- **Voice recognition on the iPhone**: who spoke when (FluidAudio diarizer), voices named once and
-  recognised after; "Me" suggested from the loudest voice; names flow into notes and task owners.
-
-## Next
 - **Ask**: questions over everything heard, answered on the phone with links to the exact moment.
   On-device embeddings and a local index (keyword + meaning), Apple's on-device model answers.
   Ask should call tools (conversations, tasks, people, calendar), not only retrieve.
+
+## Next
 - **Siri, Shortcuts, Spotlight** (App Intents): "Hey Siri, ask Earmark…", Earmark this moment,
   open tasks; conversations findable in iPhone search; Action button to earmark.
 - **Tasks into Apple Reminders** with due dates and real alerts ("remind me at 5 pm").
@@ -69,5 +67,7 @@ Things not to copy: cloud processing, public share links, third-party app store 
 - Conversations, notes and tasks on the iPhone (Apple's on-device model); spoken "remind me" tasks.
 - Audio playback on the iPhone (30 days kept), tap a line to play from there.
 - Comparison with the Omi app (see above).
+- Voice recognition on the iPhone: who spoke when, voices named once and recognised after, "Me"
+  suggested from the loudest voice, names in transcripts and notes; Voices list in Settings.
 - Mac: speaker identification with voice signatures, line splitting at speaker changes, estate re-run,
   on-demand models, phone access over Tailscale, web app.
