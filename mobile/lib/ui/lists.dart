@@ -67,6 +67,9 @@ class _MacDataState<T> extends State<MacData<T>> {
   }
 }
 
+/// Which device turned a conversation into text: "iPhone", "Mac", or null (not yet / unknown).
+String? transcribedOn(Map s) => switch (s['transcribed_by']) { 'iphone' => 'iPhone', 'mac' => 'Mac', _ => null };
+
 String _hm(num epoch) => DateFormat.Hm().format(DateTime.fromMillisecondsSinceEpoch((epoch * 1000).round()));
 
 String _dueLabel(String? due) {
@@ -331,7 +334,10 @@ class SessionTile extends StatelessWidget {
               Text(_hm(s['started_at'] as num), style: TextStyle(fontSize: 12.5, color: t.ink3, fontFeatures: const [FontFeature.tabularFigures()])),
               const SizedBox(width: 8),
               Text(dur(s['duration_s'] as num? ?? 0), style: TextStyle(fontSize: 12.5, color: t.ink3)),
-              if (s['source'] == 'phone') ...[const SizedBox(width: 8), Icon(Icons.smartphone, size: 13, color: t.ink3)],
+              if (transcribedOn(s) != null) ...[
+                const SizedBox(width: 8),
+                Text('· ${transcribedOn(s)}', key: const Key('transcribedOn'), style: TextStyle(fontSize: 12.5, color: t.ink2)),
+              ] else if (s['source'] == 'phone') ...[const SizedBox(width: 8), Icon(Icons.smartphone, size: 13, color: t.ink3)],
               const Spacer(),
               if ((s['task_count'] as int? ?? 0) > 0) Text('${s['task_count']} tasks', style: TextStyle(fontSize: 12, color: t.liveInk, fontWeight: FontWeight.w600)),
             ]),
@@ -388,7 +394,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
           final head = <Widget>[
             Text('${s['title'] ?? 'Conversation'}', style: tt.headlineMedium),
             const SizedBox(height: 6),
-            Text('${DateFormat('EEE d MMM, HH:mm').format(DateTime.fromMillisecondsSinceEpoch((s['started_at'] as num).round() * 1000))}  ·  ${dur(s['duration_s'] as num? ?? 0)}',
+            Text('${DateFormat('EEE d MMM, HH:mm').format(DateTime.fromMillisecondsSinceEpoch((s['started_at'] as num).round() * 1000))}  ·  ${dur(s['duration_s'] as num? ?? 0)}'
+                '${transcribedOn(s) != null ? '  ·  Transcribed on ${transcribedOn(s)}' : ''}',
                 style: tt.bodySmall),
             const SizedBox(height: 16),
           ];

@@ -106,7 +106,7 @@ void main() {
         case '/api/sessions':
           return http.Response(jsonEncode([
             {'id': 3, 'started_at': now - 120, 'duration_s': 95, 'status': 'queued', 'source': 'phone'},
-            {'id': 2, 'started_at': now - 1500, 'duration_s': 342, 'status': 'done', 'title': 'Excel add-ins migration and patching plan', 'task_count': 4},
+            {'id': 2, 'started_at': now - 1500, 'duration_s': 342, 'status': 'done', 'title': 'Excel add-ins migration and patching plan', 'task_count': 4, 'transcribed_by': 'iphone'},
             {'id': 1, 'started_at': now - 4000, 'duration_s': 600, 'status': 'done', 'title': 'Security incident response', 'task_count': 3},
             {'id': 0, 'started_at': now - 9000, 'duration_s': 60, 'status': 'done', 'title': 'Older'},
           ]), 200, headers: {'content-type': 'application/json'});
@@ -128,6 +128,7 @@ void main() {
     await settle();
     expect(find.text('Excel add-ins migration and patching plan'), findsOneWidget);
     expect(find.text('Older'), findsNothing, reason: 'only the latest three');
+    expect(find.descendant(of: find.byKey(const Key('latest')), matching: find.byIcon(Icons.smartphone)), findsOneWidget);
     expect(find.text('Recording'), findsOneWidget);
     expect(find.byKey(const Key('battery')), findsOneWidget);
     expect(find.text('82%'), findsOneWidget);

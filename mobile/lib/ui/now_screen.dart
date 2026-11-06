@@ -573,6 +573,15 @@ class _LatestState extends State<_Latest> {
                   style: TextStyle(fontFamily: 'Newsreader', fontSize: 17, color: pending ? t.ink2 : t.ink,
                       fontStyle: pending ? FontStyle.italic : FontStyle.normal)),
             ),
+            if (transcribedOn(s) != null) ...[
+              const SizedBox(width: 8),
+              Semantics(
+                label: 'Transcribed on ${transcribedOn(s)}',
+                child: ExcludeSemantics(
+                  child: Icon(transcribedOn(s) == 'iPhone' ? Icons.smartphone : Icons.laptop_mac, size: 15, color: t.ink2),
+                ),
+              ),
+            ],
             if (tasks > 0) ...[
               const SizedBox(width: 10),
               Text('$tasks task${tasks == 1 ? '' : 's'}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.liveInk)),
