@@ -630,6 +630,30 @@ def test_phone_app_pairs_uploads_and_takes_the_pendant(server):
                      headers={"X-Earmark-Start": str(time.time()), "X-Earmark-Seq": "9"})[0] == 400
 
 
+def test_phone_transcript_is_used_instead_of_the_macs(server):
+    code = call(server, "/api/phone/code", "POST", {})["code"]
+    tok = _app_call(server, "/api/app/pair", body={"code": code, "name": "Transcribing phone"})[1]["token"]
+    t0 = time.time() - 3 * 3600
+    words = [[0.2, 0.6, "Phone"], [0.7, 1.1, "heard"], [1.2, 1.6, "this."], [2.0, 2.5, "Second"], [2.6, 3.0, "sentence."]]
+    st, r = _app_call(server, "/api/app/transcript", tok, body={"seq": 1, "start": t0, "seconds": 8, "text": "Phone heard this. Second sentence.",
+                                                               "words": words, "engine": "parakeet-v2-coreml"})
+    assert st == 200 and r["ok"]
+    assert _app_call(server, "/api/app/transcript", tok, body={"seq": "x"})[0] == 400
+    _app_call(server, "/api/app/audio", tok, raw=_opus_chunk(8),
+              headers={"X-Earmark-Start": str(t0), "X-Earmark-Seq": "1", "X-Earmark-Codec": "21"})
+    _app_call(server, "/api/app/audio", tok, raw=_opus_chunk(4),                       # after a break: closes the first
+              headers={"X-Earmark-Start": str(t0 + 900), "X-Earmark-Seq": "2", "X-Earmark-Codec": "21"})
+
+    def done():
+        ss = [x for x in call(server, "/api/sessions") if x.get("source") == "phone" and abs(x["started_at"] - t0) < 2]
+        return ss if ss and ss[0]["status"] == "done" else None
+    s = wait_for(done, 60, "phone session transcribed")[0]
+    full = call(server, f"/api/sessions/{s['id']}")
+    texts = [g["text"] for g in full["segments"]]
+    assert texts == ["Phone heard this.", "Second sentence."], texts
+    assert full["segments"][0]["words"][0][2] == "Phone"
+
+
 def test_phone_forwards_the_pendants_own_memory(server):
     code = call(server, "/api/phone/code", "POST", {})["code"]
     tok = _app_call(server, "/api/app/pair", body={"code": code, "name": "Ring phone"})[1]["token"]

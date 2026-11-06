@@ -33,6 +33,7 @@ from . import intel as IN
 from . import speakers as SPK
 from . import phone as PH
 from . import appsync as AS
+from . import phonetext as PT
 
 FAKE = os.environ.get("EARMARK_FAKE_PENDANT") == "1"
 if FAKE:
@@ -188,6 +189,18 @@ def init_db():
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS phone_text(
+            device_id INTEGER NOT NULL,
+            seq INTEGER NOT NULL,
+            start REAL NOT NULL,                      -- epoch seconds of the chunk's first frame
+            seconds REAL NOT NULL,
+            text TEXT NOT NULL,
+            words_json TEXT,                          -- [[start, end, word]] relative to start
+            engine TEXT,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY(device_id, seq)
+        );
+        CREATE INDEX IF NOT EXISTS phone_text_start ON phone_text(start);
         CREATE TABLE IF NOT EXISTS days(
             day TEXT PRIMARY KEY,
             brief_json TEXT,
@@ -662,13 +675,17 @@ async def process_queue(cfg: dict):
                     S.proc_detail = label
 
             S.proc_label = label
-            try:
-                tr = await loop.run_in_executor(MLX, lambda: PL.transcribe(
-                Path(row["wav_path"]), cfg["whisper_model"], cfg["language"] or None, cfg["engine"],
-                    bool(cfg["translate"]), cfg["translate_model"], progress=prog))
-            finally:
-                if watcher:
-                    watcher.cancel()
+            tr = _phone_transcript(row) if row["source"] == "phone" else None
+            if tr is None:                       # the phone had no text for it: the Mac is the backup
+                try:
+                    tr = await loop.run_in_executor(MLX, lambda: PL.transcribe(
+                        Path(row["wav_path"]), cfg["whisper_model"], cfg["language"] or None, cfg["engine"],
+                        bool(cfg["translate"]), cfg["translate_model"], progress=prog))
+                finally:
+                    if watcher:
+                        watcher.cancel()
+            elif watcher:
+                watcher.cancel()
             with db() as c:
                 still_there = c.execute("SELECT 1 FROM sessions WHERE id=?", (sid,)).fetchone()
             if not still_there:
@@ -686,7 +703,7 @@ async def process_queue(cfg: dict):
                           " summary_md=?, note_path=?, error=NULL, spk_status=?, spk_json=NULL, words_status='done' WHERE id=?",
                           (title, tr["language"], json.dumps(tr["segments"]), summary, str(note),
                            "pending" if cfg.get("identify_speakers", True) else "off", sid))
-            S.say(f"transcript ready: {label}")
+            S.say(f"transcript ready: {label}" + (" (transcribed on the iPhone)" if tr.get("engine") == "iphone" else ""))
         except Exception as e:
             with db() as c:
                 gone = c.execute("SELECT 1 FROM sessions WHERE id=?", (sid,)).fetchone() is None
@@ -1364,6 +1381,35 @@ async def api_app_audio(request: Request):
     await loop.run_in_executor(None, lambda: pc.add(start, frames))
     kv_set(key, seq)
     return {"ok": True, "last_seq": seq, "frames": len(frames)}
+
+
+@app.post("/api/app/transcript")
+def api_app_transcript(request: Request, body: dict):
+    """The phone's own transcript of one chunk, sent just before the chunk's audio."""
+    dev = _app_device(request)
+    try:
+        seq, start, secs = int(body["seq"]), float(body["start"]), float(body.get("seconds") or 0)
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(400, "seq and start are required")
+    text = str(body.get("text") or "")[:20000]
+    words = body.get("words") or []
+    if not isinstance(words, list) or len(words) > 5000:
+        raise HTTPException(400, "words must be a list")
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO phone_text(device_id, seq, start, seconds, text, words_json, engine, created_at)"
+                  " VALUES(?,?,?,?,?,?,?,?)", (dev["id"], seq, start, secs, text, json.dumps(words),
+                                                str(body.get("engine") or "")[:40], int(time.time())))
+    return {"ok": True}
+
+
+def _phone_transcript(row) -> Optional[dict]:
+    """A session's transcript made on the iPhone, if the phone sent one for (nearly) all of it."""
+    with db() as c:
+        rows = c.execute("SELECT start, seconds, text, words_json FROM phone_text WHERE start >= ? AND start < ?"
+                         " ORDER BY start", (row["started_at"] - 2, row["ended_at"])).fetchall()
+    chunks = [{"start": r["start"], "seconds": r["seconds"], "text": r["text"],
+               "words": json.loads(r["words_json"] or "[]")} for r in rows]
+    return PT.transcript(chunks, float(row["started_at"]), float(row["ended_at"]))
 
 
 @app.post("/api/app/ring")
