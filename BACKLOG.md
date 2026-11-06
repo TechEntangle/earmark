@@ -5,26 +5,19 @@ backup and does the heavy lifting (other languages, full Whisper). Newest decisi
 each section. Status: **now** (being built), **next**, **later**, **idea**, **done**.
 
 ## Now
-- **Full Settings on the iPhone**: everything the Mac's settings page has that applies to the phone,
-  grouped (Pendant, Recording, Transcription, Notes & AI, Privacy, Mac, About); session gap,
-  minimum speech length, storage used and how long things are kept.
-- **Optional cloud AI with your own key** (OpenAI or Anthropic), off by default, per job (notes,
-  Ask); keys in the Keychain; text only, never audio; a clear "leaves this phone" label.
+- **Custom vocabulary**: names and terms you use (colleagues, products, acronyms) so they're spelled
+  right, on the phone and the Mac.
+- **Mac app, stage 2**: the engine's jobs move into the app one by one (pendant over Bluetooth,
+  Parakeet / WhisperKit, Apple's model for notes), then Python is retired.
 
 ## Next
-- **Native Mac app**: replace the Python service + web page with a real Mac app (menu bar + window),
-  sharing the iPhone app's code (Flutter macOS) and the same on-device engines (Parakeet, WhisperKit,
-  Apple's model, speakers); notifications, launch at login, no Terminal. Python retired in stages.
 - **Pendant firmware updates from Earmark** (the firmware accepts updates over Bluetooth); careful:
   battery check, verified images only.
 - **Ask, version 2**: Ask calls tools (conversations by date/person, open tasks, people, calendar)
   instead of only retrieving passages; follow-up questions; Ask over Mac-only conversations too.
-- **Siri, Shortcuts, Spotlight** (App Intents): "Hey Siri, ask Earmark…", Earmark this moment,
-  open tasks; conversations findable in iPhone search; Action button to earmark.
 - **Bring Mac voices to the phone**: re-learn from conversations already named on the Mac.
 
 - **Edit conversations**: rename, delete, star, merge two, fix a transcript line or its speaker.
-- **Custom vocabulary**: names and terms you use (colleagues, products, acronyms) so they're spelled right.
 - **Ask from the pendant**: press, ask a question out loud, hear the answer in your AirPods.
 
 ## Later
@@ -71,6 +64,16 @@ export, widgets/Siri, pendant care (OTA, battery history), integrations (we keep
 Things not to copy: cloud processing, public share links, third-party app store with raw-audio access.
 
 ## Done
+- **Earmark for Mac** (stage 1): a real Mac app (~/Applications/Earmark.app) over the engine: Today,
+  Conversations (notes, tasks, who spoke, transcript, playback with speed), Tasks, Ask, People,
+  Pendant, Settings; menu bar with state, pause/resume, earmark; starts the engine; open at login;
+  notifications when notes are ready; keyboard shortcuts (⌘1–7, ⌘K Ask, ⇧⌘E earmark, ⇧⌘P pause).
+- Siri, Shortcuts and the Action button on the iPhone: Earmark this moment, Pause / Resume, Ask
+  Earmark, Show my tasks. Conversations in Spotlight.
+- Full Settings on the iPhone, grouped; notes and Ask with your own OpenAI / Anthropic key (text
+  only, never audio); conversation gap; how long audio is kept; storage used.
+- Ask: finds passages by words when the sentence model is missing; "yesterday", "this week" etc.
+- Playback: speed control; audio file written by AVAudioFile.
 - Pendant page on the iPhone: everything the CV1 firmware exposes. Button actions (tap, double tap,
   press-and-hold: earmark / pause / nothing), vibration, light, microphone level, find my pendant,
   and model, firmware, hardware, charging, clock, own memory, health. Kept in step with the Mac.
