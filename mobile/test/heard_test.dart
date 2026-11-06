@@ -25,7 +25,7 @@ class FakeAsr extends LocalAsr {
     calls.add((path, prev));
     final n = calls.length;
     return n == 2
-        ? AsrResult('words of chunk $n', [AsrWord(0.1, 0.4, 'words')], 30, language: 'hi', engine: 'whisper', checked: true)
+        ? const AsrResult('', [], 30, language: 'mr', engine: 'none', checked: true) // not English: for the Mac
         : AsrResult('words of chunk $n', [AsrWord(0.1, 0.4, 'words'), AsrWord(0.5, 0.7, 'of')], 30);
   }
 }
@@ -97,10 +97,11 @@ void main() {
     await c.pumpUploads();
     expect(sent, [
       'text 1: words of chunk 1 [ parakeet-v2-coreml]', 'audio 1',
-      'text 2: words of chunk 2 [hi iphone-multi]', 'audio 2', // Hindi, translated on the phone: the Mac can use it
+      'text 2:  [mr iphone-multi]', 'audio 2', // another language: the Mac transcribes and translates it
     ]);
-    expect(Heard(Directory('${dir.path}/heard')).bySeq(2)!.translated, isTrue, reason: 'kept with the transcript');
+    expect(Heard(Directory('${dir.path}/heard')).bySeq(2)!.awaitingMac, isTrue, reason: 'kept with the transcript');
     expect(c.store!.pending(), isEmpty);
-    expect(c.heard!.latest()!.text, 'words of chunk 1 words of chunk 2', reason: 'kept on the phone after sending');
+    expect(c.heard!.latest()!.text, 'words of chunk 1 [Non-English · translating on your Mac]',
+        reason: 'kept on the phone after sending');
   });
 }

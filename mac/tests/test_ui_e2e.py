@@ -653,6 +653,10 @@ def test_phone_transcript_is_used_instead_of_the_macs(server):
     assert texts == ["Phone heard this.", "Second sentence."], texts
     assert full["segments"][0]["words"][0][2] == "Phone"
     assert full["transcribed_by"] == "iphone" and s["transcribed_by"] == "iphone"
+    # the phone can ask the Mac for its text of any stretch (to fill in other languages)
+    st, got = _app_call(server, f"/api/app/text?start={t0}&end={t0 + 10}", tok, method="GET")
+    assert st == 200 and got["ready"] and [g["text"] for g in got["segments"]] == ["Phone heard this.", "Second sentence."]
+    assert got["segments"][0]["start"] >= t0
 
 
 def test_phone_forwards_the_pendants_own_memory(server):

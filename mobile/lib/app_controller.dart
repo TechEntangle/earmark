@@ -234,6 +234,7 @@ class EarmarkController extends ChangeNotifier {
       await transcribePending();
       await processConversations();
       await pumpUploads();
+      await fillFromMac();
     });
     unawaited(_checkNotes());
     unawaited(heartbeat());
@@ -354,7 +355,11 @@ class EarmarkController extends ChangeNotifier {
       notifyListeners();
     }
     if (!notesOn || _writingNotes || !pendant.foreground) return;
-    final next = cs.all.reversed.where((c) => c.status == 'pending').firstOrNull; // oldest first
+    final nowS = (now ?? DateTime.now()).millisecondsSinceEpoch / 1000;
+    // oldest first; a conversation with another language waits (up to 6 hours) for your Mac's translation
+    final next = cs.all.reversed
+        .where((c) => c.status == 'pending' && !(Conversations.awaitingMac(c, h) && nowS - c.end < 6 * 3600))
+        .firstOrNull;
     if (next == null) return;
     _writingNotes = true;
     try {
@@ -377,6 +382,52 @@ class EarmarkController extends ChangeNotifier {
       _writingNotes = false;
       cs.save();
       notifyListeners();
+    }
+  }
+
+  final Map<int, DateTime> _askedMac = {};
+
+  /// Speech in other languages is transcribed and translated by your Mac: once a conversation has
+  /// ended and its audio is on the Mac, fetch the Mac's English text for those parts.
+  Future<void> fillFromMac({DateTime? now}) async {
+    final a = api, h = heard, cs = convs;
+    if (a == null || h == null || cs == null || link != Link.online) return;
+    final t = now ?? DateTime.now();
+    final unsent = {for (final c in store?.pending() ?? const <Chunk>[]) c.seq};
+    for (final v in cs.all) {
+      if (v.status == 'open' || !Conversations.awaitingMac(v, h)) continue;
+      if (v.seqs.any(unsent.contains)) continue; // the Mac doesn't have all of it yet
+      final asked = _askedMac[v.id];
+      if (asked != null && t.difference(asked) < const Duration(seconds: 60)) continue;
+      _askedMac[v.id] = t;
+      try {
+        final r = Map<String, dynamic>.from(await a.get('/api/app/text', {'start': '${v.start}', 'end': '${v.end}'}) as Map);
+        if (r['ready'] != true) continue;
+        final segs = [for (final g in (r['segments'] as List? ?? [])) Map<String, dynamic>.from(g as Map)];
+        for (final seq in v.seqs) {
+          final ch = h.bySeq(seq);
+          if (ch == null || !ch.awaitingMac) continue;
+          final mine = segs.where((g) => (g['start'] as num) >= ch.start - 0.5 && (g['start'] as num) < ch.end).toList();
+          final words = <List<Object>>[];
+          for (final g in mine) {
+            final toks = '${g['text']}'.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+            final a0 = (g['start'] as num).toDouble() - ch.start, a1 = (g['end'] as num).toDouble() - ch.start;
+            final step = toks.isEmpty ? 0.0 : ((a1 - a0) / toks.length).clamp(0.05, 5.0);
+            for (var i = 0; i < toks.length; i++) {
+              words.add([double.parse((a0 + i * step).toStringAsFixed(2)), double.parse((a0 + (i + 1) * step).toStringAsFixed(2)), toks[i]]);
+            }
+          }
+          h.replace(ch.withMacText(mine.map((g) => '${g['text']}').join(' '), words));
+        }
+        cs.sync(h, gap: (macSettings['session_gap_seconds'] as num?)?.toDouble() ?? 90, now: t.millisecondsSinceEpoch / 1000);
+        final after = cs.byId(v.id);
+        if (after != null && !Conversations.awaitingMac(after, h)) {
+          if (after.status == 'ready' || after.status == 'failed') after.status = 'pending'; // notes again, with the translation
+          if (after.status == 'pending' && after.words < 3) after.status = 'empty';
+        }
+        cs.save();
+        notifyListeners();
+      } catch (_) {/* try again in a minute */}
     }
   }
 

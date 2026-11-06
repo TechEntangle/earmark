@@ -1,4 +1,4 @@
-"""Transcripts made on the iPhone (Parakeet on the phone's Neural Engine).
+"""Transcripts made on the iPhone (Parakeet on the phone's Neural Engine, English only).
 
 The phone is the primary transcriber: it sends the text of every 30-second chunk just before
 the chunk's audio. When a session from the phone is processed, its transcript is built from
@@ -72,6 +72,8 @@ def transcript(chunks: list[dict], started_at: float, ended_at: float) -> Option
     """The session's transcript from the phone, or None when the Mac should transcribe it itself."""
     if not chunks or not covered(chunks, started_at, ended_at):
         return None
+    if any((ch.get("language") or "en") != "en" for ch in chunks):
+        return None   # the phone heard another language: the Mac transcribes and translates the session
     segs = segments_from_chunks(chunks, started_at)
     # the phone checked each chunk's language (English by Parakeet, others translated into English by Whisper)
     checked = all(ch.get("engine") == "iphone-multi" for ch in chunks)

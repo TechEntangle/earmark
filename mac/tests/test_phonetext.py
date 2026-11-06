@@ -38,8 +38,15 @@ def test_chunk_without_word_timings_is_spread_evenly():
 def test_languages_checked_on_the_phone_are_trusted():
     t0 = 3_000_000.0
     a = dict(_chunk(t0, 30, [[1, 2, "Hello."]]), engine="iphone-multi", language="en")
-    b = dict(_chunk(t0 + 30, 30, [[1, 2, "Translated."]]), engine="iphone-multi", language="hi")
+    b = dict(_chunk(t0 + 30, 30, [[1, 2, "Again."]]), engine="iphone-multi", language="en")
     tr = PT.transcript([a, b], t0, t0 + 60)
-    assert tr["checked"] and tr["languages"] == ["en", "hi"] and tr["language"] == "en, hi"
+    assert tr["checked"] and tr["languages"] == ["en"]
     old = dict(_chunk(t0 + 30, 30, [[1, 2, "Garbled."]]), engine="parakeet-v2-coreml", language="")
     assert not PT.transcript([a, old], t0, t0 + 60)["checked"], "an older phone: the Mac checks the language"
+
+
+def test_other_languages_heard_on_the_phone_go_to_the_mac():
+    t0 = 4_000_000.0
+    en = dict(_chunk(t0, 30, [[1, 2, "Hello."]]), engine="iphone-multi", language="en")
+    mr = {"start": t0 + 30, "seconds": 30, "text": "", "words": [], "engine": "iphone-multi", "language": "mr"}
+    assert PT.transcript([en, mr], t0, t0 + 60) is None

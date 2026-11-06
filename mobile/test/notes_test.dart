@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'dart:convert';
+
 import 'package:earmark/app_controller.dart';
+import 'package:earmark/core/api.dart';
 import 'package:earmark/core/config.dart';
 import 'package:earmark/notes/conversations.dart';
 import 'package:earmark/pendant/pendant_service.dart';
@@ -10,6 +13,8 @@ import 'package:earmark/ui/theme.dart';
 import 'package:earmark_asr/earmark_asr.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'screens_test.dart' show loadFonts;
 
@@ -159,5 +164,42 @@ void main() {
     expect(find.text('Send the vendor contract to me'), findsOneWidget);
     await expectLater(find.byType(PhoneTasksScreen), matchesGoldenFile('goldens/phone_tasks.png'));
     t.view.resetPhysicalSize();
+  });
+
+  test('another language waits for the Mac, is filled with its translation, then gets notes', () async {
+    final h = Heard(Directory('${dir.path}/heard2'));
+    h.add(HeardChunk(1, t0, 30, '', words(1, 'Let us start.')));
+    h.add(const HeardChunk(2, 0, 30, '', [], lang: 'mr', checked: true).copyAt(t0 + 30));
+    final engine = FakeEngine([notes]);
+    final c = EarmarkController(config: MemConfig(), pendant: PendantService(), asr: engine)
+      ..heard = h
+      ..convs = Conversations(File('${dir.path}/c2.json'))
+      ..asr = const AsrStatus('ready', onDisk: true)
+      ..notesState = 'available'
+      ..link = Link.online;
+    var ready = false;
+    c.api = Api(Uri.parse('https://mac.test'), 'tok', client: MockClient((r) async {
+      expect(r.url.path, '/api/app/text');
+      return http.Response(jsonEncode({'ready': ready, 'segments': [
+        {'start': t0 + 31, 'end': t0 + 38, 'text': 'We will meet the bank on Monday.', 'from': 'mr'},
+      ]}), 200);
+    }));
+    final later = DateTime.fromMillisecondsSinceEpoch(((t0 + 800) * 1000).round());
+    await c.processConversations(now: later);
+    final v = c.convs!.byId(1)!;
+    expect(v.status, 'pending');
+    expect(engine.prompts, isEmpty, reason: 'waits for the translation');
+    expect(Conversations.lines(v, h).last.text, pendingLabel);
+
+    await c.fillFromMac(now: later); // the Mac hasn't finished
+    expect(h.bySeq(2)!.awaitingMac, isTrue);
+    ready = true;
+    await c.fillFromMac(now: later.add(const Duration(minutes: 2)));
+    expect(h.bySeq(2)!.text, 'We will meet the bank on Monday.');
+    expect(Heard(Directory('${dir.path}/heard2')).bySeq(2)!.translated, isTrue, reason: 'saved');
+    await c.processConversations(now: later);
+    expect(c.convs!.byId(1)!.status, 'ready');
+    expect(engine.prompts.single.last, contains('We will meet the bank on Monday.'));
+    c.dispose();
   });
 }

@@ -70,12 +70,6 @@ class Conversation {
   }
 }
 
-const languageNames = {
-  'hi': 'Hindi', 'mr': 'Marathi', 'ur': 'Urdu', 'gu': 'Gujarati', 'bn': 'Bengali', 'ta': 'Tamil', 'te': 'Telugu',
-  'kn': 'Kannada', 'ml': 'Malayalam', 'pa': 'Punjabi', 'ar': 'Arabic', 'fa': 'Persian', 'de': 'German', 'fr': 'French',
-  'es': 'Spanish', 'it': 'Italian', 'ru': 'Russian', 'zh': 'Chinese', 'ja': 'Japanese', 'ko': 'Korean', 'tr': 'Turkish',
-  'pt': 'Portuguese', 'nl': 'Dutch', 'ne': 'Nepali', 'si': 'Sinhala',
-};
 
 /// Spoken requests to Earmark itself ("remind me to…", "add a task…"), as on the Mac.
 final commandPattern = RegExp(
@@ -89,7 +83,11 @@ final _sentenceEnd = RegExp(r'''[.?!…]['")\]]*$''');
 class Line {
   final double at; // seconds from the conversation's start
   final String text;
-  const Line(this.at, this.text);
+  /// another language, waiting for your Mac's translation
+  final bool pending;
+  /// another language, translated by your Mac
+  final bool translated;
+  const Line(this.at, this.text, {this.pending = false, this.translated = false});
 }
 
 class Conversations {
@@ -144,7 +142,10 @@ class Conversations {
       final start = g.first.start, end = g.last.end;
       final seqs = [for (final ch in g) ch.seq];
       final words = g.fold<int>(
-          0, (n, ch) => n + (ch.words.isNotEmpty ? ch.words.length : (ch.text.isEmpty ? 0 : ch.text.split(RegExp(r'\s+')).length)));
+          0,
+          (n, ch) => n +
+              (ch.awaitingMac ? 3 : 0) + // another language: words are coming from the Mac
+              (ch.words.isNotEmpty ? ch.words.length : (ch.text.isEmpty ? 0 : ch.text.split(RegExp(r'\s+')).length)));
       var c = byId(id);
       if (c == null) {
         // a closed conversation that later chunks have joined (a late upload) is reopened under its first id
@@ -157,6 +158,9 @@ class Conversations {
           ..seqs = seqs
           ..words = words;
         if (c.status != 'open') c.status = 'open';
+        changed = true;
+      } else if (c.words != words) {
+        c.words = words; // e.g. your Mac's translation arrived
         changed = true;
       }
       if (c.status == 'open' && now - end > gap + 15) {
@@ -190,6 +194,16 @@ class Conversations {
       final ch = heard.bySeq(seq);
       if (ch == null) continue;
       final base = ch.start - c.start;
+      if (ch.awaitingMac) {
+        flush();
+        if (out.isEmpty || !out.last.pending) out.add(Line(base, pendingLabel, pending: true));
+        continue;
+      }
+      if (ch.translated) {
+        flush();
+        out.add(Line(base, ch.text, translated: true));
+        continue;
+      }
       if (ch.words.isEmpty) {
         if (ch.text.isNotEmpty) {
           flush();
@@ -216,22 +230,16 @@ class Conversations {
     return '${(t ~/ 60).toString().padLeft(2, '0')}:${(t % 60).toString().padLeft(2, '0')}';
   }
 
-  /// Languages translated into English in this conversation (names, e.g. "Hindi").
-  static List<String> translatedFrom(Conversation c, Heard heard) {
-    final out = <String>[];
-    for (final seq in c.seqs) {
-      final ch = heard.bySeq(seq);
-      if (ch == null || !ch.translated) continue;
-      final name = languageNames[ch.lang] ?? ch.lang;
-      if (!out.contains(name)) out.add(name);
-    }
-    return out;
-  }
+  /// Whether the conversation had speech in another language (translated by your Mac).
+  static bool hasForeign(Conversation c, Heard heard) => c.seqs.any((q) => heard.bySeq(q)?.foreign ?? false);
+
+  /// Still waiting for your Mac to translate part of it.
+  static bool awaitingMac(Conversation c, Heard heard) => c.seqs.any((q) => heard.bySeq(q)?.awaitingMac ?? false);
 
   /// What the on-device model reads: "[mm:ss] text", ◆ for spoken requests, ★ near an earmark.
   static List<String> promptLines(Conversation c, Heard heard, List<double> earmarks) {
     return [
-      for (final l in lines(c, heard))
+      for (final l in lines(c, heard).where((l) => !l.pending))
         '${commandPattern.hasMatch(l.text) ? '◆ ' : ''}'
         '${earmarks.any((m) => c.start + l.at >= m - 20 && c.start + l.at <= m + 30) ? '★ ' : ''}'
         '[${clockText(l.at)}] ${l.text}',

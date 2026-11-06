@@ -7,8 +7,9 @@
 // Channel "earmark/asr":
 //   status        → {state: idle|downloading|loading|ready|error, progress: 0…1, onDisk: Bool, error?,
 //                    languages: {state, progress, onDisk, error?}}   (Whisper, for languages other than English)
-//   prepare       → downloads Parakeet once (~480 MB) and loads it, then Whisper (~950 MB) in the background
-//   transcribe    → also {language, engine: parakeet|whisper, checked}: whether the language was checked
+//   prepare       → downloads Parakeet once (~480 MB) and loads it, then the language detector (~140 MB)
+//   transcribe    → also {language, engine: parakeet|none, checked}: English is transcribed here; any other
+//                   language comes back with no text ("engine": "none"), for the Mac to translate
 //   transcribe    {path, prev?} → {text, words: [[start, end, word]], seconds}
 //                 prev = the chunk just before, if the audio runs on: its last 2 s are used as
 //                 context so a word cut at the boundary is heard whole, then dropped from the result.
@@ -224,11 +225,11 @@ actor AsrEngine {
             return ["text": text, "words": words, "seconds": seconds, "language": "", "engine": "parakeet", "checked": false]
         }
         let (lang, prob) = try await whisper.detect(main)
-        if lang == "en" || prob < 0.6 {
+        if lang == "en" || prob < 0.5 {
             return ["text": text, "words": words, "seconds": seconds, "language": "en", "engine": "parakeet", "checked": true]
         }
-        let (wText, wWords) = try await whisper.translate(main, language: lang)
-        return ["text": wText, "words": wWords, "seconds": seconds, "language": lang, "engine": "whisper", "checked": true]
+        // not English: Parakeet's text would be nonsense; the Mac transcribes and translates it
+        return ["text": "", "words": [[Any]](), "seconds": seconds, "language": lang, "engine": "none", "checked": true]
     }
 
     private func run(_ m: AsrManager, lead: [Float], main: [Float]) async throws -> (String, [[Any]]) {

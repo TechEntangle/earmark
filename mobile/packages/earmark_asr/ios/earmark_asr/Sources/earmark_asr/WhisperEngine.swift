@@ -1,14 +1,14 @@
-// Whisper large-v3 on the iPhone (WhisperKit, Core ML), for everything that isn't English:
-// it tells which language a chunk is in, and translates Hindi, Marathi, Urdu and the rest straight
-// into English, as the Mac does. English stays with Parakeet, which is faster and better at it.
+// A small Whisper (base, multilingual, ~140 MB, via WhisperKit) on the iPhone, used only to tell
+// which language a chunk of speech is in. English is transcribed on the phone by Parakeet;
+// anything else is left to the Mac, whose full Whisper large-v3 transcribes and translates it.
 //
 // Kept in its own file: WhisperKit and FluidAudio both name types like WordTiming.
 import Foundation
 import WhisperKit
 
 actor WhisperEngine {
-    /// The full large-v3 (not "turbo", which translates poorly), compressed for iPhone.
-    static let variant = "openai_whisper-large-v3_947MB"
+    /// Multilingual base: enough to tell English from other languages.
+    static let variant = "openai_whisper-base"
     private static let savedFolderKey = "earmark.whisper.folder"
 
     private var pipe: WhisperKit?
@@ -25,6 +25,12 @@ actor WhisperEngine {
     /// Where the model was saved after its download (nil until then).
     static var savedFolder: URL? {
         guard let p = UserDefaults.standard.string(forKey: savedFolderKey) else { return nil }
+        if !p.hasSuffix(variant) {
+            // an earlier, bigger model (large-v3): remove it to free the space
+            try? FileManager.default.removeItem(atPath: p)
+            UserDefaults.standard.removeObject(forKey: savedFolderKey)
+            return nil
+        }
         let url = URL(fileURLWithPath: p, isDirectory: true)
         return FileManager.default.fileExists(atPath: url.appendingPathComponent("AudioEncoder.mlmodelc").path) ? url : nil
     }
@@ -112,46 +118,5 @@ actor WhisperEngine {
             prob = lp <= 0 ? exp(Double(lp)) : Double(lp)   // log-probability or probability
         }
         return (r.language, prob)
-    }
-
-    /// Translate speech in [language] into English. Words carry times from the start of [samples].
-    func translate(_ samples: [Float], language: String) async throws -> (String, [[Any]]) {
-        let p = try await load()
-        let options = DecodingOptions(
-            verbose: false,
-            task: .translate,
-            language: language,
-            temperature: 0,
-            temperatureFallbackCount: 3,
-            usePrefillPrompt: true,
-            detectLanguage: false,
-            skipSpecialTokens: true,
-            withoutTimestamps: false,
-            wordTimestamps: true,
-            chunkingStrategy: .vad)
-        let results = try await p.transcribe(audioArray: samples, decodeOptions: options)
-        var words: [[Any]] = []
-        var texts: [String] = []
-        for r in results {
-            for seg in r.segments {
-                let t = seg.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if t.isEmpty || seg.noSpeechProb > 0.8 { continue }
-                texts.append(t)
-                if let ws = seg.words, !ws.isEmpty {
-                    for w in ws {
-                        let word = w.word.trimmingCharacters(in: .whitespaces)
-                        if !word.isEmpty { words.append([Double(w.start), Double(w.end), word]) }
-                    }
-                } else {
-                    // no word times: spread the segment's words over it
-                    let toks = t.split(separator: " ").map(String.init)
-                    let step = Double(max(0.05, (seg.end - seg.start) / Float(max(1, toks.count))))
-                    for (i, w) in toks.enumerated() {
-                        words.append([Double(seg.start) + Double(i) * step, Double(seg.start) + Double(i + 1) * step, w])
-                    }
-                }
-            }
-        }
-        return (texts.joined(separator: " "), words)
     }
 }

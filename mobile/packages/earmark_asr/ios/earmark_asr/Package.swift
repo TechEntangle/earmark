@@ -1,7 +1,7 @@
 // swift-tools-version: 5.9
 // On-device transcription for Earmark: Parakeet TDT (Core ML, Neural Engine) via FluidAudio
-// (Apache-2.0) for English, Whisper large-v3 via WhisperKit (MIT) to detect the language and
-// translate everything else into English, and libopus via swift-opus (BSD-3) for the pendant's audio.
+// (Apache-2.0) for English, a small Whisper via WhisperKit (MIT) to tell English from other languages
+// (which the Mac translates), and libopus via swift-opus (BSD-3) for the pendant's audio.
 import PackageDescription
 
 let package = Package(

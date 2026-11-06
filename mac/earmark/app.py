@@ -1418,6 +1418,27 @@ def api_app_transcript(request: Request, body: dict):
     return {"ok": True}
 
 
+@app.get("/api/app/text")
+def api_app_text(request: Request, start: float, end: float):
+    """The Mac's transcript (English, translated where needed) for a stretch of time, so the phone can
+    fill in what it couldn't do itself (speech in other languages). ready=false: not transcribed yet."""
+    _app_device(request)
+    with db() as c:
+        rows = c.execute("SELECT started_at, ended_at, status, transcript_json FROM sessions"
+                         " WHERE started_at < ? AND ended_at > ? AND status != 'empty' ORDER BY started_at",
+                         (end, start)).fetchall()
+    ready = all(r["status"] in ("done", "error") for r in rows)
+    segs = []
+    for r in rows:
+        if r["status"] != "done":
+            continue
+        for g in json.loads(r["transcript_json"] or "[]"):
+            a, b = r["started_at"] + float(g.get("start", 0)), r["started_at"] + float(g.get("end", 0))
+            if b > start and a < end and (g.get("text") or "").strip():
+                segs.append({"start": round(a, 2), "end": round(b, 2), "text": g["text"].strip(), "from": g.get("from")})
+    return {"ready": ready, "segments": segs}
+
+
 def _phone_transcript(row) -> Optional[dict]:
     """A session's transcript made on the iPhone, if the phone sent one for (nearly) all of it."""
     with db() as c:

@@ -9,26 +9,40 @@ class HeardChunk {
   final double seconds;
   final String text;
   final List<List<Object>> words; // [start, end, word], seconds from [start]
-  /// "en", another language (the text is its English translation), or "" (unknown)
+  /// "en", another language (heard on the phone; your Mac transcribes and translates it), or "" (unknown)
   final String lang;
   /// whether the language was checked on the phone
   final bool checked;
-  const HeardChunk(this.seq, this.start, this.seconds, this.text, this.words, {this.lang = '', this.checked = false});
+  /// the text came from your Mac (its English translation of another language)
+  final bool fromMac;
+  const HeardChunk(this.seq, this.start, this.seconds, this.text, this.words,
+      {this.lang = '', this.checked = false, this.fromMac = false});
 
-  bool get translated => lang.isNotEmpty && lang != 'en';
+  /// Speech in another language.
+  bool get foreign => lang.isNotEmpty && lang != 'en';
+  /// Another language, still waiting for your Mac's translation.
+  bool get awaitingMac => foreign && !fromMac;
+  /// Another language, translated by your Mac.
+  bool get translated => foreign && fromMac && text.isNotEmpty;
+
+  HeardChunk copyAt(double at) => HeardChunk(seq, at, seconds, text, words, lang: lang, checked: checked, fromMac: fromMac);
+
+  HeardChunk withMacText(String t, List<List<Object>> w) =>
+      HeardChunk(seq, start, seconds, t, w, lang: lang, checked: checked, fromMac: true);
 
   double get end => start + seconds;
   DateTime get startTime => DateTime.fromMillisecondsSinceEpoch((start * 1000).round());
   DateTime get endTime => DateTime.fromMillisecondsSinceEpoch((end * 1000).round());
 
   Map<String, Object> toJson() =>
-      {'seq': seq, 'start': start, 'seconds': seconds, 'text': text, 'words': words, 'lang': lang, 'checked': checked};
+      {'seq': seq, 'start': start, 'seconds': seconds, 'text': text, 'words': words, 'lang': lang, 'checked': checked,
+       'fromMac': fromMac};
   static HeardChunk? fromJson(Map m) {
     final seq = m['seq'], start = m['start'];
     if (seq is! int || start is! num) return null;
     return HeardChunk(seq, start.toDouble(), (m['seconds'] as num?)?.toDouble() ?? 0, '${m['text'] ?? ''}',
         [for (final w in (m['words'] as List? ?? [])) if (w is List && w.length == 3) [w[0] as Object, w[1] as Object, '${w[2]}']],
-        lang: '${m['lang'] ?? ''}', checked: m['checked'] == true);
+        lang: '${m['lang'] ?? ''}', checked: m['checked'] == true, fromMac: m['fromMac'] == true);
   }
 }
 
@@ -39,8 +53,15 @@ class Stretch {
   DateTime get startTime => chunks.first.startTime;
   DateTime get endTime => chunks.last.endTime;
   double get seconds => chunks.last.end - chunks.first.start;
-  String get text => chunks.map((c) => c.text).where((t) => t.isNotEmpty).join(' ');
+  String get text => chunks
+      .map((c) => c.awaitingMac ? pendingLabel : c.text)
+      .where((t) => t.isNotEmpty)
+      .fold<List<String>>([], (l, t) => l.isNotEmpty && l.last == t && t == pendingLabel ? l : (l..add(t)))
+      .join(' ');
 }
+
+/// Shown where speech in another language waits for your Mac.
+const pendingLabel = '[Non-English · translating on your Mac]';
 
 class Heard {
   final Directory dir;
@@ -68,6 +89,20 @@ class Heard {
       }
     }
     return null;
+  }
+
+  /// Replace a chunk's record (e.g. with your Mac's translation).
+  void replace(HeardChunk c) {
+    final day = _key(c.startTime);
+    final list = _days[day];
+    if (list == null) return;
+    final i = list.indexWhere((x) => x.seq == c.seq);
+    if (i < 0) return;
+    list[i] = c;
+    final f = File('${dir.path}/$day.jsonl');
+    final tmp = File('${f.path}.tmp');
+    tmp.writeAsStringSync(list.map((x) => '${jsonEncode(x.toJson())}\n').join(), flush: true);
+    tmp.renameSync(f.path);
   }
 
   void add(HeardChunk c) {

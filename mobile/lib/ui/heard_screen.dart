@@ -49,8 +49,8 @@ class HeardCard extends StatelessWidget {
       final pct = (langs.progress * 100).clamp(0, 100).round();
       extra = _panel(context, key: const Key('langPreparing'), children: [
         Text(langs.state == 'loading' || langs.onDisk
-            ? 'Loading the model for other languages…'
-            : 'Getting the model for Hindi, Marathi, Urdu… · ${pct > 0 ? '$pct%' : 'starting'}',
+            ? 'Loading the language check…'
+            : 'Getting the language check · ${pct > 0 ? '$pct%' : 'starting'}',
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         ClipRRect(
@@ -59,13 +59,13 @@ class HeardCard extends StatelessWidget {
               minHeight: 3, color: t.live, backgroundColor: t.line),
         ),
         const SizedBox(height: 6),
-        Text('About 950 MB, once. English works meanwhile; other languages go to your Mac until it is ready.',
+        Text('About 140 MB, once. It tells English from other languages, which your Mac translates.',
             style: TextStyle(fontSize: 12.5, color: t.ink2)),
       ]);
     } else if (langs != null && langs.state == 'error') {
       extra = _panel(context, key: const Key('langError'), children: [
-        Text("The model for other languages didn't load", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.due)),
-        Text('${langs.error ?? ''} Your Mac handles them meanwhile.', maxLines: 2, overflow: TextOverflow.ellipsis,
+        Text("The language check didn't load", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: t.due)),
+        Text('${langs.error ?? ''} Your Mac checks the language meanwhile.', maxLines: 2, overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 12.5, color: t.ink2)),
         Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: c.retryLanguages, child: const Text('Try again'))),
       ]);

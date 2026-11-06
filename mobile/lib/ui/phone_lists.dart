@@ -12,6 +12,7 @@ String _hm(DateTime t) => DateFormat.Hm().format(t);
 String convTitle(EarmarkController c, Conversation v) {
   if (v.status == 'ready' && (v.title ?? '').isNotEmpty) return v.title!;
   if (v.status == 'open') return 'Listening…';
+  if (v.status == 'pending' && c.heard != null && Conversations.awaitingMac(v, c.heard!)) return 'Translating on your Mac…';
   if (v.status == 'pending' && c.notesOn) return 'Writing notes…';
   final h = c.heard;
   if (h == null) return 'Conversation';
@@ -157,12 +158,12 @@ class PhoneConversationScreen extends StatelessWidget {
             if (v == null || h == null) return const Center(child: Text('This conversation is no longer on the phone.'));
             final t = context.t, tt = Theme.of(context).textTheme;
             final lines = Conversations.lines(v, h);
-            final from = Conversations.translatedFrom(v, h);
+            final foreign = Conversations.hasForeign(v, h);
             return ListView(padding: const EdgeInsets.fromLTRB(20, 0, 20, 32), children: [
               Text(convTitle(c, v), style: tt.headlineMedium),
               const SizedBox(height: 6),
               Text('${DateFormat('EEE d MMM, HH:mm').format(v.startTime)}  ·  ${dur(v.seconds)}  ·  On iPhone'
-                  '${from.isEmpty ? '' : '  ·  Translated from ${from.join(', ')}'}', style: tt.bodySmall),
+                  '${foreign ? '  ·  Includes non-English, translated on your Mac' : ''}', style: tt.bodySmall),
               const SizedBox(height: 16),
               if (v.status == 'ready') ...[
                 if ((v.summary ?? '').isNotEmpty)
@@ -180,6 +181,9 @@ class PhoneConversationScreen extends StatelessWidget {
                     child: TextButton(onPressed: () => c.retryNotes(v), child: const Text('Try again'))),
               ] else if (v.status == 'pending' && !c.notesOn) ...[
                 Text(notesHint(c), style: TextStyle(fontSize: 14, color: t.ink2)),
+              ] else if (v.status == 'pending' && Conversations.awaitingMac(v, h)) ...[
+                Text('Part of this was in another language. Notes follow once your Mac has translated it.',
+                    style: TextStyle(fontSize: 14, color: t.ink2)),
               ] else if (_working(c, v)) ...[
                 Text(v.status == 'open' ? 'Still listening. Notes follow when the conversation ends.' : 'Writing notes on the iPhone…',
                     style: TextStyle(fontSize: 14, color: t.ink2)),
@@ -192,7 +196,11 @@ class PhoneConversationScreen extends StatelessWidget {
                   child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     SizedBox(width: 50, child: Text(Conversations.clockText(l.at),
                         style: TextStyle(fontSize: 12, color: t.ink2, height: 1.7, fontFeatures: const [FontFeature.tabularFigures()]))),
-                    Expanded(child: SelectableText(l.text, style: const TextStyle(fontFamily: 'Newsreader', fontSize: 16.5, height: 1.45))),
+                    Expanded(
+                        child: SelectableText(l.text,
+                            style: TextStyle(fontFamily: 'Newsreader', fontSize: 16.5, height: 1.45,
+                                color: l.pending ? t.ink2 : null,
+                                fontStyle: l.pending || l.translated ? FontStyle.italic : FontStyle.normal))),
                   ]),
                 ),
             ]);

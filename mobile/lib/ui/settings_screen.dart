@@ -77,9 +77,9 @@ class SettingsScreen extends StatelessWidget {
                   if (c.asr.ready) ...[
                     const Divider(),
                     ListTile(
-                      title: const Text('Other languages'),
+                      title: const Text('Language check'),
                       subtitle: Text(switch (c.asr.languages?.state) {
-                        'ready' => 'Ready · Whisper large-v3: Hindi, Marathi, Urdu and more, translated into English',
+                        'ready' => 'Ready · English is transcribed here; other languages are translated by your Mac',
                         'downloading' => 'Downloading · ${((c.asr.languages?.progress ?? 0) * 100).round()}%',
                         'loading' => 'Loading…',
                         'error' => "Didn't load: ${c.asr.languages?.error ?? ''}",
