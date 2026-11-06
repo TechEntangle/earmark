@@ -45,6 +45,8 @@ class Native {
   static Future<Map> speed(double x) => _call('speed', {'speed': x});
   static Future<Map> stop() => _call('stop');
   static Future<Map> audioState() => _call('audioState');
+  static Future<bool> hasUpdate() async => (await _call('hasUpdate'))['ready'] == true;
+  static Future<Map> applyUpdate() => _call('applyUpdate');
 }
 
 /// The engine's state and the app's view of it, refreshed every few seconds.
@@ -57,6 +59,10 @@ class MacState extends ChangeNotifier {
   Map<String, dynamic> settingsInfo = {}; // local_models, ollama_models, intel, paths
   String? engineError;
   bool starting = false;
+  /// a newer engine is waiting in ~/Applications/earmark/update
+  bool updateReady = false;
+  bool updating = false;
+  int _ticks = 0;
   Timer? _poll;
   double _lastLog = 0;
   /// bumps when anything the pages show may have changed (new notes, a task added…)
@@ -95,6 +101,7 @@ class MacState extends ChangeNotifier {
       if (status != null) engineError = "Earmark's engine stopped answering: ${e.message}";
       status = null;
     }
+    if (_ticks++ % 10 == 0) updateReady = await Native.hasUpdate();
     notifyListeners();
   }
 
@@ -154,6 +161,18 @@ class MacState extends ChangeNotifier {
     } on ApiError catch (e) {
       return e.message;
     }
+  }
+
+  /// Install the waiting engine update and restart it.
+  Future<String?> applyUpdate() async {
+    updating = true;
+    notifyListeners();
+    final r = await Native.applyUpdate();
+    updating = false;
+    updateReady = await Native.hasUpdate();
+    await refresh();
+    await loadSettings();
+    return r['ok'] == true ? null : '${r['error'] ?? 'The update did not install'}';
   }
 
   void changed() {

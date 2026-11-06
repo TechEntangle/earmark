@@ -104,7 +104,20 @@ class _MacShellState extends State<MacShell> {
                 _Sidebar(s: s, nav: nav),
                 VerticalDivider(width: 1, color: context.t.line),
                 Expanded(
-                  child: !s.online
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    if (s.updateReady) _UpdateBanner(s: s),
+                    Expanded(child: _page(s)),
+                  ]),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _page(MacState s) => !s.online
                       ? _Offline(s: s)
                       : switch (nav.section) {
                           Section.today => TodayPage(s: s),
@@ -114,13 +127,34 @@ class _MacShellState extends State<MacShell> {
                           Section.people => PeoplePage(s: s),
                           Section.pendant => PendantPage(s: s),
                           Section.settings => SettingsPage(s: s),
-                        },
-                ),
-              ]),
-            ),
-          ),
+                        };
+}
+
+class _UpdateBanner extends StatelessWidget {
+  final MacState s;
+  const _UpdateBanner({required this.s});
+  @override
+  Widget build(BuildContext context) {
+    final t = context.t;
+    return Container(
+      key: const Key('updateBanner'),
+      padding: const EdgeInsets.fromLTRB(20, 30, 20, 10),
+      color: t.liveSoft,
+      child: Row(children: [
+        Icon(Icons.system_update_alt, size: 18, color: t.liveInk),
+        const SizedBox(width: 10),
+        Expanded(child: Text("An update for Earmark's engine is ready.", style: TextStyle(color: t.liveInk, fontWeight: FontWeight.w600))),
+        FilledButton(
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 34)),
+          onPressed: s.updating
+              ? null
+              : () async {
+                  final err = await s.applyUpdate();
+                  if (context.mounted) toast(context, err ?? 'Updated. The engine restarted.');
+                },
+          child: Text(s.updating ? 'Installing…' : 'Install and restart'),
         ),
-      ),
+      ]),
     );
   }
 }

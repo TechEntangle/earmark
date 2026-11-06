@@ -198,6 +198,40 @@ class AppDelegate: FlutterAppDelegate {
     }
   }
 
+  private func engineDir() -> URL {
+    FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications/earmark")
+  }
+
+  /// Copy the waiting update (~/Applications/earmark/update) into place and restart the engine
+  /// (what "Update Earmark.command" did, without Terminal).
+  func applyUpdate(done: @escaping ([String: Any]) -> Void) {
+    let fm = FileManager.default
+    let root = engineDir(), upd = root.appendingPathComponent("update")
+    guard fm.fileExists(atPath: upd.path) else { return done(["ok": false, "error": "No update waiting."]) }
+    do {
+      let items = fm.enumerator(at: upd, includingPropertiesForKeys: [.isDirectoryKey])
+      while let src = items?.nextObject() as? URL {
+        let rel = src.path.replacingOccurrences(of: upd.path + "/", with: "")
+        let dst = root.appendingPathComponent(rel)
+        if (try? src.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+          try fm.createDirectory(at: dst, withIntermediateDirectories: true)
+        } else {
+          if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
+          try fm.copyItem(at: src, to: dst)
+        }
+      }
+      try fm.removeItem(at: upd)
+    } catch {
+      return done(["ok": false, "error": "The update could not be copied: \(error.localizedDescription)"])
+    }
+    post("/api/restart", [:]) { [weak self] _ in
+      // give the engine a moment to stop, then make sure it's back
+      DispatchQueue.global().asyncAfter(deadline: .now() + 4) {
+        self?.ensureEngine { r in done(["ok": true, "running": r["running"] ?? false]) }
+      }
+    }
+  }
+
   // MARK: channel
 
   private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -225,6 +259,10 @@ class AppDelegate: FlutterAppDelegate {
     case "status":
       refresh()
       result(nil)
+    case "hasUpdate":
+      result(["ready": FileManager.default.fileExists(atPath: engineDir().appendingPathComponent("update").path)])
+    case "applyUpdate":
+      applyUpdate { reply($0) }
     case "reveal":
       if let p = args["path"] as? String { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)]) }
       result(nil)
