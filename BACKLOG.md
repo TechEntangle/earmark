@@ -5,14 +5,17 @@ backup and does the heavy lifting (other languages, full Whisper). Newest decisi
 each section. Status: **now** (being built), **next**, **later**, **idea**, **done**.
 
 ## Now
-- (your pick from Next)
+- **Full Settings on the iPhone**: everything the Mac's settings page has that applies to the phone,
+  grouped (Pendant, Recording, Transcription, Notes & AI, Privacy, Mac, About); session gap,
+  minimum speech length, storage used and how long things are kept.
+- **Optional cloud AI with your own key** (OpenAI or Anthropic), off by default, per job (notes,
+  Ask); keys in the Keychain; text only, never audio; a clear "leaves this phone" label.
 
 ## Next
 - **Ask, version 2**: Ask calls tools (conversations by date/person, open tasks, people, calendar)
   instead of only retrieving passages; follow-up questions; Ask over Mac-only conversations too.
 - **Siri, Shortcuts, Spotlight** (App Intents): "Hey Siri, ask Earmark…", Earmark this moment,
   open tasks; conversations findable in iPhone search; Action button to earmark.
-- **Tasks into Apple Reminders** with due dates and real alerts ("remind me at 5 pm").
 - **Bring Mac voices to the phone**: re-learn from conversations already named on the Mac.
 
 - **Edit conversations**: rename, delete, star, merge two, fix a transcript line or its speaker.
@@ -35,7 +38,9 @@ each section. Status: **now** (being built), **next**, **later**, **idea**, **do
 - **Hinglish / mixed speech**: send pieces with a noticeable share of another language to the Mac.
 - **Calls**: Mac calls (Teams inside AVD), iPhone calls over AirPods (platform limits apply).
 - **Battery**: hourly sync / sync on demand; sleep and wake by gesture (firmware permitting).
-- **Android build** of the same app (emulator first).
+- **Android build**: pendant, recording, Mac sync and the UI work as is (Flutter); the on-device
+  parts need Android twins: Parakeet via sherpa-onnx, a small on-device model (Gemma via MediaPipe
+  or Gemini Nano where offered) or the cloud key for notes/Ask, Google Tasks/Calendar for reminders.
 - **TestFlight** distribution instead of installing from Xcode.
 
 - **Memories about you**: facts and preferences learnt from conversations, each linked to its source.
@@ -61,6 +66,9 @@ export, widgets/Siri, pendant care (OTA, battery history), integrations (we keep
 Things not to copy: cloud processing, public share links, third-party app store with raw-audio access.
 
 ## Done
+- Pendant settings on the iPhone (light, microphone level, single/double tap, vibration), kept in
+  step with the Mac.
+- Tasks into Apple Reminders with due dates and alerts; ticking off there ticks off in Earmark.
 - Pendant on the iPhone with crash-safe recording; Mac as backup with handoff ("Use this iPhone").
 - Home screen: status chain (pendant, battery, holder, Mac), one action, latest conversations.
 - English transcription on the iPhone (Parakeet); other languages detected and translated by the Mac.
