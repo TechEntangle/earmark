@@ -45,7 +45,23 @@ class _AskScreenState extends State<AskScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    widget.c.navRequest.addListener(_fromSiri);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fromSiri());
+  }
+
+  /// "Ask Earmark …" from Siri or a shortcut.
+  void _fromSiri() {
+    final q = widget.c.pendingQuestion;
+    if (q == null || !mounted) return;
+    widget.c.pendingQuestion = null;
+    if (q.isNotEmpty) _ask(q);
+  }
+
+  @override
   void dispose() {
+    widget.c.navRequest.removeListener(_fromSiri);
     _q.dispose();
     _scroll.dispose();
     super.dispose();

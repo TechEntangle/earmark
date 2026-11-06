@@ -338,4 +338,26 @@ void main() {
     await expectLater(find.byType(PendantScreen), matchesGoldenFile('goldens/pendant.png'));
     c.dispose();
   });
+
+  test('Siri and Shortcuts: earmark at the moment asked, pause, resume, ask', () async {
+    final p = FakePendant();
+    await p.start();
+    final c = controller(p)..paused = false;
+    final at = DateTime.now().subtract(const Duration(seconds: 3));
+    c.handleIntent({'action': 'earmark', 'at': at.millisecondsSinceEpoch / 1000});
+    expect(c.earmarks.last, closeTo(at.millisecondsSinceEpoch / 1000, 0.01));
+    c.handleIntent({'action': 'pause'});
+    await Future<void>.delayed(Duration.zero);
+    expect(c.paused, isTrue);
+    c.handleIntent({'action': 'pause'});
+    await Future<void>.delayed(Duration.zero);
+    expect(c.paused, isTrue, reason: 'pause twice stays paused');
+    c.handleIntent({'action': 'resume'});
+    await Future<void>.delayed(Duration.zero);
+    expect(c.paused, isFalse);
+    c.handleIntent({'action': 'ask', 'q': 'What did Sam promise?'});
+    expect(c.navRequest.value, 'ask');
+    expect(c.pendingQuestion, 'What did Sam promise?');
+    c.dispose();
+  });
 }

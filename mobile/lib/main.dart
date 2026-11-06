@@ -131,6 +131,38 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   int i = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.c.navRequest.addListener(_go);
+  }
+
+  @override
+  void dispose() {
+    widget.c.navRequest.removeListener(_go);
+    super.dispose();
+  }
+
+  /// Siri, a shortcut or Spotlight asked to go somewhere.
+  void _go() {
+    final c = widget.c, r = c.navRequest.value;
+    if (r == null || !mounted) return;
+    Navigator.of(context).popUntil((x) => x.isFirst);
+    switch (r) {
+      case 'ask':
+        setState(() => i = 1);
+      case 'tasks':
+        setState(() => i = 2);
+      case 'conversation':
+        final id = c.pendingConversation;
+        c.pendingConversation = null;
+        setState(() => i = 3);
+        if (id != null && c.convs?.byId(id) != null) {
+          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PhoneConversationScreen(c: c, id: id)));
+        }
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final c = widget.c;

@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'core/api.dart';
 import 'core/config.dart';
+import 'core/intents.dart';
 import 'pendant/pendant_service.dart';
 import 'pendant/prefs.dart';
 import 'pendant/protocol.dart';
@@ -344,8 +345,10 @@ class EarmarkController extends ChangeNotifier {
       await fillFromMac();
       await updateAskIndex();
       await syncReminders();
+      await updateSpotlight();
     });
     unawaited(_checkNotes());
+    unawaited(Intents.listen(handleIntent));
     unawaited(heartbeat());
     if (asrOn) unawaited(prepareAsr());
   }
@@ -723,6 +726,62 @@ class EarmarkController extends ChangeNotifier {
     convs?.save();
     notifyListeners();
     unawaited(updateAskIndex());
+    unawaited(Intents.unindex(['conv-${v.id}']));
+    _spotlit.remove(v.id);
+  }
+
+  // ------------------------------------------------------------ Siri, Shortcuts, Spotlight
+  /// Where the app should go next (from Siri, a shortcut or Spotlight): ask | tasks | conversation.
+  final navRequest = ValueNotifier<String?>(null);
+  String? pendingQuestion;
+  int? pendingConversation;
+
+  /// An action from Siri, Shortcuts, the Action button or Spotlight.
+  void handleIntent(Map<String, dynamic> m) {
+    final at = (m['at'] as num?) == null ? DateTime.now() : DateTime.fromMillisecondsSinceEpoch(((m['at'] as num) * 1000).round());
+    switch (m['action']) {
+      case 'earmark':
+        _earmark(at);
+      case 'pause':
+        if (!paused) unawaited(togglePause());
+      case 'resume':
+        if (paused) unawaited(togglePause());
+      case 'ask':
+        pendingQuestion = '${m['q'] ?? ''}'.trim();
+        navRequest.value = null;
+        navRequest.value = 'ask';
+      case 'open':
+        navRequest.value = null;
+        navRequest.value = '${m['tab'] ?? 'tasks'}';
+      case 'conversation':
+        pendingConversation = int.tryParse('${m['id']}'.replaceFirst('conv-', ''));
+        navRequest.value = null;
+        navRequest.value = 'conversation';
+    }
+  }
+
+  final Map<int, String> _spotlit = {};
+
+  /// List conversations with notes in Spotlight (title, summary, people, topics).
+  Future<void> updateSpotlight() async {
+    final cs = convs;
+    if (cs == null || !Intents.supported) return;
+    final items = <Map<String, Object?>>[];
+    for (final v in cs.all) {
+      if (v.status != 'ready') continue;
+      final sig = '${convTitleText(v)}|${v.summary}';
+      if (_spotlit[v.id] == sig) continue;
+      _spotlit[v.id] = sig;
+      items.add({
+        'id': 'conv-${v.id}',
+        'title': convTitleText(v),
+        'summary': v.summary ?? '',
+        'date': v.start,
+        'keywords': [...v.people, ...v.topics],
+      });
+      if (items.length >= 50) break;
+    }
+    await Intents.index(items);
   }
 
   void forgetVoice(String name) {
