@@ -27,6 +27,10 @@ class FakeConfig extends ConfigStore {
   Future<String?> pendantId() async => m['pendant'];
   @override
   Future<void> savePendantId(String? id) async => id == null ? m.remove('pendant') : m['pendant'] = id;
+  @override
+  Future<DateTime?> lastHeld() async => m['held'] == null ? null : DateTime.parse(m['held']!);
+  @override
+  Future<void> saveLastHeld(DateTime t) async => m['held'] = t.toIso8601String();
 }
 
 /// A pendant that is "connected" without Bluetooth.
@@ -44,6 +48,9 @@ class FakePendant extends PendantService {
   Future<void> buzz(List<(int, int)> pattern) async => buzzes.add(pattern);
   @override
   Future<bool> setLed(int pct) async => true;
+  int reconnects = 0;
+  @override
+  void reconnectNow() => reconnects++;
 }
 
 Future<void> loadFonts() async {
@@ -138,5 +145,31 @@ void main() {
       c.store!.add(Uint8List.fromList([1, 2, 3]));
     }
     expect(c.store!.openSeconds, closeTo(0.1, 1e-9));
+  });
+
+  test('take over: claims the pendant at once, goes for it, and stops claiming once it is here', () async {
+    final p = FakePendant()..state = PendantState.connecting;
+    final c = controller(p)..holding = true;
+    final sent = <Map>[];
+    var macHas = true;
+    c.api = Api(Uri.parse('https://mac.tail1234.ts.net'), 'tok', client: MockClient((r) async {
+      if (r.url.path == '/api/app/heartbeat') {
+        sent.add(jsonDecode(r.body) as Map);
+        final reply = {'ok': true, 'paused': false, 'settings': {}, 'last_seq': 0, 'mac_has_pendant': macHas};
+        macHas = false; // the Mac lets go as soon as it hears the claim
+        return http.Response(jsonEncode(reply), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    await c.takeFromMac();
+    expect(sent.first['wants_pendant'], isTrue);
+    expect(c.takingOver, isTrue);
+    expect(p.reconnects, greaterThanOrEqualTo(1), reason: 'no waiting out the retry back-off');
+    p.state = PendantState.connected;
+    c.pendant.notifyListeners();
+    await c.heartbeat();
+    expect(sent.last['wants_pendant'], isFalse);
+    expect(sent.last['holds_pendant'], isTrue);
+    c.dispose();
   });
 }

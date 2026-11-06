@@ -40,6 +40,12 @@ class PendantService extends ChangeNotifier {
   double catchUpProgress = 0;
 
   bool _wanted = false;
+
+  /// True while the app is on screen. Then a connection that hasn't completed within a few
+  /// seconds falls back to scanning (finds the pendant the moment it is free); in the
+  /// background a pending connection waits quietly instead.
+  bool foreground = true;
+  Timer? _stall;
   StreamSubscription? _statusSub, _scanSub, _connSub, _audioSub, _buttonSub, _battSub, _ringSub;
   StreamController<List<int>>? _ringQ;
   Timer? _retry, _battTimer;
@@ -81,6 +87,14 @@ class PendantService extends ChangeNotifier {
     _set(PendantState.idle);
   }
 
+  /// Try right now, without waiting out the retry back-off (e.g. the Mac just let go).
+  void reconnectNow() {
+    if (!_wanted || connected) return;
+    _teardown();
+    _attempt = 0;
+    foreground ? _scan() : _go();
+  }
+
   /// Forget the remembered pendant and look for one again.
   Future<void> forget() async {
     deviceId = null;
@@ -102,19 +116,24 @@ class PendantService extends ChangeNotifier {
   void _scan() {
     _set(PendantState.searching);
     _scanSub?.cancel();
-    final timeout = Timer(const Duration(seconds: 25), () {
+    final timeout = Timer(const Duration(seconds: 12), () {
       _scanSub?.cancel();
       _scanSub = null;
-      if (_wanted && deviceId == null) _later(_scan);
+      if (!_wanted) return;
+      // not advertising: someone else (the Mac) has it, or it is away. A remembered pendant
+      // gets a pending connection, which completes by itself when it frees up.
+      deviceId == null ? _later(_scan) : _connect();
     });
     _scanSub = ble.scanForDevices(withServices: const [], scanMode: ScanMode.lowLatency, requireLocationServicesEnabled: false).listen((d) {
       if (d.name == deviceName || d.serviceUuids.contains(Uuid.parse(OmiUuids.audioService))) {
         timeout.cancel();
         _scanSub?.cancel();
         _scanSub = null;
-        deviceId = d.id;
-        onPaired?.call(d.id);
-        _connect();
+        if (d.id != deviceId) {
+          deviceId = d.id;
+          onPaired?.call(d.id);
+        }
+        _connect(fromScan: true);
       }
     }, onError: (e) {
       timeout.cancel();
@@ -123,14 +142,24 @@ class PendantService extends ChangeNotifier {
     });
   }
 
-  void _connect() {
+  void _connect({bool fromScan = false}) {
     _set(PendantState.connecting);
     _connSub?.cancel();
+    _stall?.cancel();
+    // On screen, don't sit on a connection that isn't happening: look for the pendant instead.
+    _stall = Timer(Duration(seconds: fromScan ? 20 : 10), () {
+      if (_wanted && foreground && state == PendantState.connecting) {
+        lastError = 'no answer from the pendant; looking for it';
+        _teardown();
+        _scan();
+      }
+    });
     // No timeout: on Android this uses autoConnect, on iOS a pending connection; both
     // complete by themselves whenever the pendant comes back in range, even in the background.
     _connSub = ble.connectToDevice(id: deviceId!).listen((u) async {
       switch (u.connectionState) {
         case DeviceConnectionState.connected:
+          _stall?.cancel();
           _attempt = 0;
           try {
             await _setup();
@@ -243,6 +272,7 @@ class PendantService extends ChangeNotifier {
 
   void _teardown() {
     _retry?.cancel();
+    _stall?.cancel();
     _scanSub?.cancel();
     _scanSub = null;
     _asm.flush();

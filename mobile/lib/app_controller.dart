@@ -42,6 +42,11 @@ class EarmarkController extends ChangeNotifier {
   bool macHasPendant = false;
   DateTime? _lastHeld; // when this phone last had the pendant connected
   DateTime? _takeoverAsked; // the user asked to take the pendant from the Mac
+  Timer? _takeoverBeat;
+  /// "Use this phone" was pressed and the pendant hasn't arrived yet.
+  bool get takingOver => _takeoverBeat != null;
+  /// The last take-over didn't reach the pendant (shown until the next attempt).
+  bool takeoverFailed = false;
 
   /// Ask the Mac to step back. Only when this phone had the pendant moments ago, or the user
   /// asked: a phone without the pendant nearby (or an emulator) must not stop the Mac recording.
@@ -49,14 +54,46 @@ class EarmarkController extends ChangeNotifier {
     if (!holding || pendant.connected) return false;
     final now = DateTime.now();
     if (_lastHeld != null && now.difference(_lastHeld!) < const Duration(minutes: 2)) return true;
-    return _takeoverAsked != null && now.difference(_takeoverAsked!) < const Duration(minutes: 5);
+    return _takeoverAsked != null && now.difference(_takeoverAsked!) < const Duration(minutes: 2);
   }
 
-  /// "Take it from the Mac": the Mac lets go and this phone connects.
+  /// "Use this phone": tell the Mac to let go (it checks every second), then go straight for
+  /// the pendant instead of waiting out the retry back-off. Quick heartbeats until it arrives;
+  /// after a minute, give up and say so (the Mac takes it back once our claim lapses).
   Future<void> takeFromMac() async {
+    if (takingOver) return;
     _takeoverAsked = DateTime.now();
+    takeoverFailed = false;
+    if (!holding) await startHolding();
+    var ticks = 0;
+    _takeoverBeat = Timer.periodic(const Duration(seconds: 3), (t) {
+      ticks++;
+      if (pendant.connected || ticks >= 20) {
+        t.cancel();
+        _takeoverBeat = null;
+        if (!pendant.connected) {
+          takeoverFailed = true;
+          _takeoverAsked = null;
+        }
+        notifyListeners();
+        unawaited(heartbeat());
+        return;
+      }
+      unawaited(heartbeat());
+      if (!macHasPendant && pendant.state != PendantState.connected && ticks % 4 == 1) pendant.reconnectNow();
+    });
     notifyListeners();
     await heartbeat();
+    pendant.reconnectNow();
+  }
+
+  /// The app came to the screen or left it.
+  void setForeground(bool on) {
+    pendant.foreground = on;
+    if (on && holding && !pendant.connected) {
+      pendant.reconnectNow();
+      unawaited(heartbeat());
+    }
   }
 
   late final TapInterpreter _taps = TapInterpreter(
@@ -84,6 +121,7 @@ class EarmarkController extends ChangeNotifier {
       } catch (_) {}
     }
     paused = await config.paused();
+    _lastHeld = await config.lastHeld();
     pairing = await config.pairing();
     if (pairing != null) api = Api(pairing!.server, pairing!.token);
     pendant.onPaired = (id) => config.savePendantId(id);
@@ -103,6 +141,7 @@ class EarmarkController extends ChangeNotifier {
   void dispose() {
     _beat?.cancel();
     _pump?.cancel();
+    _takeoverBeat?.cancel();
     _frameSub?.cancel();
     _btnSub?.cancel();
     pendant.removeListener(_onPendant);
@@ -153,13 +192,19 @@ class EarmarkController extends ChangeNotifier {
   }
 
   void _onPendant() {
-    if (pendant.connected) _lastHeld = DateTime.now();
+    if (pendant.connected) _markHeld();
     if (!pendant.connected) store?.close();
     notifyListeners();
     if (pendant.connected) {
       _applySettings();
       unawaited(heartbeat());
     }
+  }
+
+  void _markHeld() {
+    _lastHeld = DateTime.now();
+    if (takeoverFailed) takeoverFailed = false;
+    unawaited(config.saveLastHeld(_lastHeld!));
   }
 
   void _onFrame(Uint8List f) {
@@ -255,12 +300,13 @@ class EarmarkController extends ChangeNotifier {
         'session_seconds': store?.openSeconds ?? 0,
         'queued_seconds': store?.pendingSeconds() ?? 0,
         'app_version': appVersion,
+        'pendant_error': pendant.connected ? null : pendant.lastError,
       });
       link = Link.online;
       linkError = null;
       macSettings = Map<String, dynamic>.from(r['settings'] as Map? ?? {});
       macHasPendant = r['mac_has_pendant'] == true;
-      if (pendant.connected) _lastHeld = DateTime.now();
+      if (pendant.connected) _markHeld();
       final last = r['last_seq'];
       if (last is int) store?.ensureSeqAbove(last);
       // the Mac's Pause button wins when nothing from the phone is waiting to be sent

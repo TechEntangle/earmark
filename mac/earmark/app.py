@@ -1308,6 +1308,11 @@ def api_app_heartbeat(request: Request, body: dict):
           "pendant_connected": bool(body.get("pendant_connected")), "battery": body.get("battery"),
           "state": str(body.get("state") or ""), "session_seconds": body.get("session_seconds"),
           "queued_seconds": body.get("queued_seconds"), "app_version": str(body.get("app_version") or "")[:20]}
+    err = str(body.get("pendant_error") or "")[:200]
+    prev_err = (S.app_state.get(dev["id"]) or {}).get("pendant_error", "")
+    st["pendant_error"] = err
+    if err and err != prev_err:
+        S.say(f"{st['device_name']} can't connect to the pendant yet: {err}", "warn")
     first = dev["id"] not in S.app_state or not S.app_state[dev["id"]].get("holds_pendant")
     was_holding = not first
     S.app_state[dev["id"]] = st

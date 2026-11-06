@@ -16,8 +16,20 @@ void main() {
   _licences();
   if (Platform.isAndroid) FlutterForegroundTask.initCommunicationPort();
   final c = EarmarkController();
+  WidgetsBinding.instance.addObserver(_Lifecycle(c));
   runApp(EarmarkApp(c: c));
   c.init().then((_) => _keepAliveWhileHolding(c));
+}
+
+/// Tells the controller when the app is on screen (the pendant search is quicker then).
+class _Lifecycle with WidgetsBindingObserver {
+  final EarmarkController c;
+  _Lifecycle(this.c);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (!c.ready) return;
+    c.setForeground(s == AppLifecycleState.resumed);
+  }
 }
 
 void _licences() {

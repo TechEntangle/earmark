@@ -35,6 +35,15 @@ class ConfigStore {
   Future<void> savePendantId(String? id) =>
       id == null ? _s.delete(key: 'pendant_id') : _s.write(key: 'pendant_id', value: id);
 
+  /// When this phone last had the pendant (survives an app restart, so the Mac doesn't grab
+  /// the pendant while the app is starting up again).
+  Future<DateTime?> lastHeld() async {
+    final v = int.tryParse(await _s.read(key: 'last_held') ?? '');
+    return v == null ? null : DateTime.fromMillisecondsSinceEpoch(v);
+  }
+
+  Future<void> saveLastHeld(DateTime t) => _s.write(key: 'last_held', value: '${t.millisecondsSinceEpoch}');
+
   Future<bool> paused() async => (await _s.read(key: 'paused')) == '1';
   Future<void> savePaused(bool p) => _s.write(key: 'paused', value: p ? '1' : '0');
 }
