@@ -6,6 +6,7 @@ import 'package:earmark/app_controller.dart';
 import 'package:earmark/core/api.dart';
 import 'package:earmark/core/config.dart';
 import 'package:earmark/notes/conversations.dart';
+import 'package:earmark/notes/voices.dart';
 import 'package:earmark/pendant/pendant_service.dart';
 import 'package:earmark/transcribe/heard.dart';
 import 'package:earmark/recorder/chunk_store.dart';
@@ -23,7 +24,12 @@ import 'screens_test.dart' show loadFonts;
 class FakeEngine extends LocalAsr {
   final prompts = <List<String>>[];
   final List<Object> replies; // a Map (notes) or an exception, one per call
-  FakeEngine(this.replies);
+  Diarization? diarization;
+  FakeEngine(this.replies, {this.diarization});
+  @override
+  bool get speakersSupported => diarization != null;
+  @override
+  Future<Diarization> diarize(List<String> paths, List<double> offsets) async => diarization!;
   @override
   bool get supported => true;
   @override
@@ -269,6 +275,68 @@ void main() {
     await t.pump();
     expect(audio.calls.last, 'play 32.0');
     await expectLater(find.byType(PhoneConversationScreen), matchesGoldenFile('goldens/phone_playback.png'));
+    await t.pumpWidget(const SizedBox());
+    t.view.resetPhysicalSize();
+  });
+
+  testWidgets('who spoke when: turns split lines, the loudest voice is suggested as Me, naming a voice is remembered',
+      (t) async {
+    await loadFonts();
+    t.view.physicalSize = const Size(1179, 2556);
+    t.view.devicePixelRatio = 3;
+    final store = ChunkStore(Directory('${dir.path}/rec2'));
+    for (final (seq, at) in [(1, t0), (2, t0 + 30), (3, t0 + 60)]) {
+      File('${store.keptDir.path}/${seq}_${(at * 1e6).round()}.chunk').writeAsBytesSync([0, 1, 0]);
+    }
+    List<double> vec(double a, double b) => [a, b, 0, 0];
+    final engine = FakeEngine([notes, notes, notes],
+        diarization: Diarization([(0.5, 31.9, 'S1'), (31.95, 34.35, 'S2'), (34.36, 50, 'S1')], {
+          'S1': SpeakerInfo(vec(1, 0.1), 45, 0.30), // the wearer: loudest
+          'S2': SpeakerInfo(vec(0.1, 1), 2, 0.05),
+        }));
+    final c = EarmarkController(config: MemConfig(), pendant: PendantService(), asr: engine)
+      ..heard = heard
+      ..store = store
+      ..voiceBook = VoiceBook(File('${dir.path}/voices.json'))
+      ..convs = Conversations(File('${dir.path}/c4.json'))
+      ..asr = const AsrStatus('ready', onDisk: true)
+      ..notesState = 'available';
+    final later = DateTime.fromMillisecondsSinceEpoch(((t0 + 800) * 1000).round());
+    await t.runAsync(() => c.processConversations(now: later)); // speakers
+    final v = c.convs!.byId(1)!;
+    expect(v.spk, 'done');
+    expect(v.label('S1'), 'Me?', reason: 'loudest voice, no voice saved as Me yet');
+    expect(v.label('S2'), 'Speaker 2');
+    final lines = Conversations.lines(v, heard);
+    expect(lines.map((l) => (l.speaker, l.text)).toList(), [
+      ('S1', 'Let us go through the vendor contract.'),
+      ('S2', 'Sam will send it by Thursday.'),
+      ('S1', 'Remind me to call the bank about the card.'),
+    ]);
+    await t.runAsync(() => c.processConversations(now: later)); // notes, with speakers
+    expect(engine.prompts.last[1], '[00:32] Speaker 2: Sam will send it by Thursday.',
+        reason: 'guesses are not given to the model as names');
+
+    await t.pumpWidget(MaterialApp(theme: earmarkTheme(Brightness.dark), home: PhoneConversationScreen(c: c, id: 1, audio: FakeAudio())));
+    expect(find.text('ME?'), findsWidgets);
+    await t.ensureVisible(find.byKey(const Key('speaker_S2')));
+    await t.tap(find.byKey(const Key('speaker_S2')));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('speakerName')), 'Sam');
+    await t.tap(find.byKey(const Key('saveSpeaker')));
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await t.pump();
+    expect(v.label('S2'), 'Sam');
+    expect(c.voiceBook!.byName('Sam'), isNotNull, reason: 'the voice is learnt');
+    expect(v.status, isIn(['pending', 'ready']), reason: 'notes rewritten with the name');
+    await expectLater(find.byType(PhoneConversationScreen), matchesGoldenFile('goldens/phone_speakers.png'));
+
+    // a later conversation with the same voice: named automatically
+    final v2 = Conversation(99, t0 + 5000, t0 + 5030, [], voices: {'X': {'embedding': vec(0.12, 1), 'seconds': 5.0}});
+    c.convs!.all.add(v2);
+    c.nameSpeaker(v, 'S1', 'me');
+    expect(v.label('S1'), 'Me');
+    expect(v2.label('X'), 'Sam', reason: 'recognised from the saved voice');
     await t.pumpWidget(const SizedBox());
     t.view.resetPhysicalSize();
   });

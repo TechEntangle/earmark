@@ -18,6 +18,7 @@ import 'pendant/pendant_service.dart';
 import 'pendant/protocol.dart';
 import 'recorder/chunk_store.dart';
 import 'notes/conversations.dart';
+import 'notes/voices.dart';
 import 'transcribe/heard.dart';
 
 /// The on-device speech engine (swappable in tests).
@@ -28,6 +29,8 @@ class LocalAsr {
   Future<AsrResult> transcribe(String path, {String? prev}) => EarmarkAsr.transcribe(path, prev: prev);
   Future<void> deleteModels() => EarmarkAsr.deleteModels();
   Future<void> prepareLanguages() => EarmarkAsr.prepareLanguages();
+  bool get speakersSupported => EarmarkSpeakers.supported;
+  Future<Diarization> diarize(List<String> paths, List<double> offsets) => EarmarkSpeakers.diarize(paths, offsets);
   Future<String> notesAvailability() => EarmarkNotes.availability();
   Future<Map<String, dynamic>> notes(List<String> lines, {String header = ''}) => EarmarkNotes.notes(lines, header: header);
 }
@@ -58,6 +61,7 @@ class EarmarkController extends ChangeNotifier {
 
   // ---- conversations, notes and tasks made on this phone
   Conversations? convs;
+  VoiceBook? voiceBook;
   /// Apple's on-device model: available | notEligible | notEnabled | notReady | unsupported | unknown
   String notesState = 'unknown';
   bool _writingNotes = false;
@@ -213,6 +217,7 @@ class EarmarkController extends ChangeNotifier {
     _lastHeld = await config.lastHeld();
     heard = Heard(Directory('${docs.path}/heard'));
     convs = Conversations(File('${docs.path}/conversations.json'));
+    voiceBook = VoiceBook(File('${docs.path}/voices.json'));
     _earmarksFile = File('${docs.path}/heard/earmarks.json');
     try {
       earmarks.addAll([for (final x in jsonDecode(_earmarksFile!.readAsStringSync()) as List) (x as num).toDouble()]);
@@ -354,7 +359,26 @@ class EarmarkController extends ChangeNotifier {
       cs.save();
       notifyListeners();
     }
-    if (!notesOn || _writingNotes || !pendant.foreground) return;
+    if (_writingNotes || !pendant.foreground) return;
+    // who spoke when, before the notes (so tasks get the right owner)
+    final nowS0 = (now ?? DateTime.now()).millisecondsSinceEpoch / 1000;
+    final unheard = cs.all.reversed
+        .where((c) => c.status == 'pending' && c.spk == null && !Conversations.awaitingMac(c, h))
+        .firstOrNull;
+    if (unheard != null && (!asrEngine.speakersSupported || audioFor(unheard).$1.isEmpty)) {
+      unheard.spk = 'none'; // nothing to listen to: straight on to the notes
+    } else if (unheard != null) {
+      _writingNotes = true;
+      try {
+        await identifySpeakers(unheard);
+      } finally {
+        _writingNotes = false;
+        cs.save();
+        notifyListeners();
+      }
+      return;
+    }
+    if (!notesOn) return;
     final nowS = (now ?? DateTime.now()).millisecondsSinceEpoch / 1000;
     // oldest first; a conversation with another language waits (up to 6 hours) for your Mac's translation
     final next = cs.all.reversed
@@ -383,6 +407,116 @@ class EarmarkController extends ChangeNotifier {
       cs.save();
       notifyListeners();
     }
+  }
+
+  /// The conversation's audio files on this phone and where each starts (seconds from its start).
+  (List<String>, List<double>) audioFor(Conversation v) {
+    final h = heard, s = store;
+    final paths = <String>[], offsets = <double>[];
+    if (h == null || s == null) return (paths, offsets);
+    for (final seq in v.seqs) {
+      final ch = h.bySeq(seq);
+      if (ch == null) continue;
+      final f = s.fileFor(seq, (ch.start * 1e6).round());
+      if (f == null) continue;
+      paths.add(f.path);
+      offsets.add(ch.start - v.start);
+    }
+    return (paths, offsets);
+  }
+
+  /// Find who spoke when in a conversation and put names to the voices this phone knows.
+  Future<void> identifySpeakers(Conversation v) async {
+    if (!asrEngine.speakersSupported) {
+      v.spk = 'none';
+      return;
+    }
+    final (paths, offsets) = audioFor(v);
+    if (paths.isEmpty) {
+      v.spk = 'none';
+      return;
+    }
+    try {
+      final d = await asrEngine.diarize(paths, offsets);
+      v.turns = [for (final t in d.turns) [t.$1, t.$2, t.$3]];
+      v.voices = {
+        for (final e in d.speakers.entries)
+          e.key: {'seconds': e.value.seconds, 'energy': e.value.energy, 'embedding': e.value.embedding},
+      };
+      _nameVoices(v);
+      v.spk = v.turns.isEmpty ? 'none' : 'done';
+    } catch (e) {
+      v.spk = 'failed';
+      v.error = 'Speakers: $e';
+    }
+  }
+
+  /// Names for a conversation's voices: known voices by similarity; "Me?" for the wearer (the
+  /// loudest voice) until your own voice is saved.
+  void _nameVoices(Conversation v) {
+    final book = voiceBook;
+    if (book == null) return;
+    final taken = <String, (String, double)>{}; // name → (speaker id, similarity)
+    for (final e in v.voices.entries) {
+      e.value.remove('guess');
+      if ((e.value['name'] as String?)?.isNotEmpty ?? false) continue;
+      final emb = [for (final x in (e.value['embedding'] as List? ?? [])) (x as num).toDouble()];
+      final best = book.closest(emb);
+      if (best == null) continue;
+      e.value['sim'] = best.$2;
+      if (best.$2 >= VoiceBook.auto) {
+        final prev = taken[best.$1.name];
+        if (prev == null || best.$2 > prev.$2) {
+          if (prev != null) {
+            v.voices[prev.$1]!['guess'] = v.voices[prev.$1]!.remove('name');
+          }
+          e.value['name'] = best.$1.name;
+          taken[best.$1.name] = (e.key, best.$2);
+        } else {
+          e.value['guess'] = best.$1.name;
+        }
+      } else if (best.$2 >= VoiceBook.suggest) {
+        e.value['guess'] = best.$1.name;
+      }
+    }
+    final hasMe = v.voices.values.any((x) => x['name'] == 'Me');
+    if (!hasMe && book.byName('Me') == null && v.voices.isNotEmpty) {
+      final total = v.voices.values.fold<double>(0, (a, x) => a + ((x['seconds'] as num?)?.toDouble() ?? 0));
+      final loud = v.voices.entries
+          .where((e) => ((e.value['seconds'] as num?)?.toDouble() ?? 0) >= total * 0.1 && e.value['name'] == null)
+          .fold<MapEntry<String, Map<String, dynamic>>?>(null, (b, e) =>
+              b == null || ((e.value['energy'] as num?) ?? 0) > ((b.value['energy'] as num?) ?? 0) ? e : b);
+      if (loud != null && loud.value['guess'] == null) loud.value['guess'] = 'Me';
+    }
+  }
+
+  /// "This voice is [name]": names it here, learns the voice, names it in other conversations where
+  /// it is now recognised, and rewrites this conversation's notes with the right names.
+  void nameSpeaker(Conversation v, String id, String name) {
+    final x = v.voices[id];
+    if (x == null) return;
+    name = name.trim();
+    if (name.isEmpty) return;
+    if (name.toLowerCase() == 'me') name = 'Me';
+    for (final other in v.voices.entries) {
+      if (other.key != id && other.value['name'] == name) other.value.remove('name'); // one voice per name
+    }
+    x['name'] = name;
+    x.remove('guess');
+    final emb = [for (final e in (x['embedding'] as List? ?? [])) (e as num).toDouble()];
+    voiceBook?.learn(name, emb, (x['seconds'] as num?)?.toDouble() ?? 1);
+    for (final c in convs?.all ?? const <Conversation>[]) {
+      if (c.voices.isNotEmpty) _nameVoices(c);
+    }
+    if (v.status == 'ready' || v.status == 'failed') v.status = 'pending';
+    convs?.save();
+    notifyListeners();
+    unawaited(processConversations());
+  }
+
+  void forgetVoice(String name) {
+    voiceBook?.forget(name);
+    notifyListeners();
   }
 
   final Map<int, DateTime> _askedMac = {};

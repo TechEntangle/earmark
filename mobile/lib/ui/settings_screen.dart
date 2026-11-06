@@ -137,6 +137,28 @@ class SettingsScreen extends StatelessWidget {
                   if (c.pendant.lastError != null) 'last error: ${c.pendant.lastError}',
                 ].join(' · '), style: tt.bodySmall),
               ),
+              if ((c.voiceBook?.voices ?? const []).isNotEmpty) ...[
+                const Divider(),
+                ExpansionTile(
+                  key: const Key('voices'),
+                  title: const Text('Voices'),
+                  subtitle: Text('${c.voiceBook!.voices.length} known on this iPhone', style: tt.bodySmall),
+                  shape: const Border(),
+                  children: [
+                    for (final v in c.voiceBook!.voices)
+                      ListTile(
+                        dense: true,
+                        title: Text(v.name),
+                        subtitle: Text('learnt from ${dur(v.weight)} of speech', style: tt.bodySmall),
+                        trailing: IconButton(
+                          tooltip: 'Forget this voice',
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          onPressed: () => c.forgetVoice(v.name),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               const Divider(),
               ExpansionTile(
                 key: const Key('pendantHelp'),

@@ -214,7 +214,10 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
               _head(context, 'TRANSCRIPT'),
               if (lines.isEmpty) Text('No words.', style: TextStyle(color: t.ink2)),
               if (pl == null)
-                for (final l in lines) _line(context, l, null, false)
+                for (var i = 0; i < lines.length; i++) ...[
+                  if (_turn(lines, i)) _speaker(context, v, lines[i].speaker!),
+                  _line(context, lines[i], null, false),
+                ]
               else
                 ListenableBuilder(
                   listenable: pl,
@@ -225,13 +228,54 @@ class _PhoneConversationScreenState extends State<PhoneConversationScreen> {
                         if (lines[i].at <= pl.position + 0.2) cur = i;
                       }
                     }
-                    return Column(children: [for (var i = 0; i < lines.length; i++) _line(context, lines[i], pl, i == cur)]);
+                    return Column(children: [
+                      for (var i = 0; i < lines.length; i++) ...[
+                        if (_turn(lines, i)) _speaker(context, v, lines[i].speaker!),
+                        _line(context, lines[i], pl, i == cur),
+                      ],
+                    ]);
                   },
                 ),
             ]);
           },
         ),
       );
+
+  /// A new speaker starts at line [i].
+  bool _turn(List<Line> lines, int i) {
+    final sp = lines[i].speaker;
+    if (sp == null) return false;
+    for (var j = i - 1; j >= 0; j--) {
+      if (lines[j].speaker != null) return lines[j].speaker != sp;
+    }
+    return true;
+  }
+
+  Widget _speaker(BuildContext context, Conversation v, String id) {
+    final t = context.t;
+    final named = (v.voices[id]?['name'] as String?)?.isNotEmpty ?? false;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 10, 0, 2),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          key: Key('speaker_$id'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => nameSpeakerSheet(context, c, v, id),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(v.label(id).toUpperCase(),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.1,
+                      color: named ? t.liveInk : t.ink2)),
+              const SizedBox(width: 4),
+              Icon(named ? Icons.edit_outlined : Icons.person_add_alt_1_outlined, size: 14, color: t.ink2),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _line(BuildContext context, Line l, ConvPlayer? pl, bool current) {
     final t = context.t;
@@ -368,4 +412,44 @@ class _PhoneTasksScreenState extends State<PhoneTasksScreen> {
           },
         ),
       );
+}
+
+/// "Who is this?": name a voice in a conversation (it is recognised from then on).
+Future<void> nameSpeakerSheet(BuildContext context, EarmarkController c, Conversation v, String id) async {
+  final x = v.voices[id] ?? {};
+  final ctrl = TextEditingController(text: (x['name'] as String?) ?? (x['guess'] as String?) ?? '');
+  final known = [
+    'Me',
+    ...?c.voiceBook?.voices.map((e) => e.name).where((n) => n != 'Me'),
+  ];
+  final name = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: context.t.surface,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Who is ${v.label(id)}?', style: Theme.of(ctx).textTheme.headlineSmall),
+        const SizedBox(height: 4),
+        Text('Earmark recognises this voice from now on.', style: TextStyle(fontSize: 13.5, color: ctx.t.ink2)),
+        const SizedBox(height: 14),
+        TextField(
+          key: const Key('speakerName'),
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'Name'),
+          onSubmitted: (s) => Navigator.pop(ctx, s),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 6, children: [
+          for (final n in known) ActionChip(label: Text(n == 'Me' ? 'Me (my voice)' : n), onPressed: () => Navigator.pop(ctx, n)),
+        ]),
+        const SizedBox(height: 12),
+        FilledButton(key: const Key('saveSpeaker'), onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Save')),
+      ]),
+    ),
+  );
+  if (name != null && name.trim().isNotEmpty) c.nameSpeaker(v, id, name);
 }

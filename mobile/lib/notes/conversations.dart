@@ -37,17 +37,63 @@ class Conversation {
   List<ConvTask> tasks;
   int attempts;
   int words;
+  /// Who spoke when: null (not yet), done, none (no audio / too short), failed
+  String? spk;
+  /// (start, end, speaker id), seconds from the conversation's start
+  List<List<Object>> turns;
+  /// speaker id → {name?, guess?, sim, seconds, energy, embedding}
+  Map<String, Map<String, dynamic>> voices;
 
   Conversation(this.id, this.start, this.end, this.seqs,
       {this.status = 'open', this.title, this.kind, this.summary, this.error, List<String>? keyPoints, List<String>? decisions,
-      List<String>? people, List<String>? topics, List<ConvTask>? tasks, this.attempts = 0, this.words = 0})
+      List<String>? people, List<String>? topics, List<ConvTask>? tasks, this.attempts = 0, this.words = 0,
+      this.spk, List<List<Object>>? turns, Map<String, Map<String, dynamic>>? voices})
       : keyPoints = keyPoints ?? [],
         decisions = decisions ?? [],
         people = people ?? [],
         topics = topics ?? [],
-        tasks = tasks ?? [];
+        tasks = tasks ?? [],
+        turns = turns ?? [],
+        voices = voices ?? {};
 
   double get seconds => end - start;
+
+  /// The speaker at [t] seconds from the start (the turn covering it, else the nearest), or null.
+  String? speakerAt(double t) {
+    String? best;
+    var gap = double.infinity;
+    for (final x in turns) {
+      final a = (x[0] as num).toDouble(), b = (x[1] as num).toDouble();
+      if (t >= a && t <= b) return '${x[2]}';
+      final d = t < a ? a - t : t - b;
+      if (d < gap && d < 1.5) {
+        gap = d;
+        best = '${x[2]}';
+      }
+    }
+    return best;
+  }
+
+  /// Speaker ids in order of first appearance.
+  List<String> get speakerOrder {
+    final out = <String>[];
+    for (final x in [...turns]..sort((a, b) => (a[0] as num).compareTo(b[0] as num))) {
+      if (!out.contains('${x[2]}')) out.add('${x[2]}');
+    }
+    return out;
+  }
+
+  /// What to call a speaker: their name, "Rahul?" for a guess, else "Speaker 2".
+  String label(String id, {bool guesses = true}) {
+    final v = voices[id];
+    final name = v?['name'] as String?;
+    if (name != null && name.isNotEmpty) return name;
+    final guess = v?['guess'] as String?;
+    if (guesses && guess != null && guess.isNotEmpty) return '$guess?';
+    final i = speakerOrder.indexOf(id);
+    return 'Speaker ${i < 0 ? '?' : i + 1}';
+  }
+
   DateTime get startTime => DateTime.fromMillisecondsSinceEpoch((start * 1000).round());
   bool get visible => status != 'empty';
   int get openTasks => tasks.where((t) => !t.done).length;
@@ -56,6 +102,7 @@ class Conversation {
         'id': id, 'start': start, 'end': end, 'seqs': seqs, 'status': status, 'title': title, 'kind': kind,
         'summary': summary, 'error': error, 'keyPoints': keyPoints, 'decisions': decisions, 'people': people,
         'topics': topics, 'tasks': [for (final t in tasks) t.toJson()], 'attempts': attempts, 'words': words,
+        'spk': spk, 'turns': turns, 'voices': voices,
       };
 
   static Conversation fromJson(Map m) {
@@ -66,7 +113,10 @@ class Conversation {
         summary: m['summary'] as String?, error: m['error'] as String?, keyPoints: strs(m['keyPoints']),
         decisions: strs(m['decisions']), people: strs(m['people']), topics: strs(m['topics']),
         tasks: [for (final t in (m['tasks'] as List? ?? [])) ConvTask.fromJson(t as Map)],
-        attempts: (m['attempts'] as num?)?.toInt() ?? 0, words: (m['words'] as num?)?.toInt() ?? 0);
+        attempts: (m['attempts'] as num?)?.toInt() ?? 0, words: (m['words'] as num?)?.toInt() ?? 0,
+        spk: m['spk'] as String?,
+        turns: [for (final t in (m['turns'] as List? ?? [])) [for (final x in t as List) x as Object]],
+        voices: {for (final e in (m['voices'] as Map? ?? {}).entries) '${e.key}': Map<String, dynamic>.from(e.value as Map)});
   }
 }
 
@@ -87,7 +137,9 @@ class Line {
   final bool pending;
   /// another language, translated by your Mac
   final bool translated;
-  const Line(this.at, this.text, {this.pending = false, this.translated = false});
+  /// speaker id (see Conversation.label), when known
+  final String? speaker;
+  const Line(this.at, this.text, {this.pending = false, this.translated = false, this.speaker});
 }
 
 class Conversations {
@@ -182,10 +234,11 @@ class Conversations {
     final out = <Line>[];
     final cur = StringBuffer();
     double? at;
+    String? who;
     double lastEnd = -1;
     void flush() {
       final t = cur.toString().trim();
-      if (t.isNotEmpty && at != null) out.add(Line(at!, t));
+      if (t.isNotEmpty && at != null) out.add(Line(at!, t, speaker: who));
       cur.clear();
       at = null;
     }
@@ -201,20 +254,22 @@ class Conversations {
       }
       if (ch.translated) {
         flush();
-        out.add(Line(base, ch.text, translated: true));
+        out.add(Line(base, ch.text, translated: true, speaker: c.speakerAt(base + 1)));
         continue;
       }
       if (ch.words.isEmpty) {
         if (ch.text.isNotEmpty) {
           flush();
-          out.add(Line(base, ch.text));
+          out.add(Line(base, ch.text, speaker: c.speakerAt(base + 1)));
         }
         continue;
       }
       for (final w in ch.words) {
         final s = base + (w[0] as num).toDouble(), e = base + (w[1] as num).toDouble();
         final word = '${w[2]}';
-        if (at != null && (s - lastEnd > 1.2 || s - at! > 30)) flush();
+        final sp = c.turns.isEmpty ? null : c.speakerAt((s + e) / 2);
+        if (at != null && (s - lastEnd > 1.2 || s - at! > 30 || (sp != null && who != null && sp != who))) flush();
+        if (at == null) who = sp ?? who;
         at ??= s;
         cur.write(cur.isEmpty ? word : ' $word');
         lastEnd = e;
@@ -242,7 +297,7 @@ class Conversations {
       for (final l in lines(c, heard).where((l) => !l.pending))
         '${commandPattern.hasMatch(l.text) ? '◆ ' : ''}'
         '${earmarks.any((m) => c.start + l.at >= m - 20 && c.start + l.at <= m + 30) ? '★ ' : ''}'
-        '[${clockText(l.at)}] ${l.text}',
+        '[${clockText(l.at)}] ${l.speaker != null ? '${c.label(l.speaker!, guesses: false)}: ' : ''}${l.text}',
     ];
   }
 

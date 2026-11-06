@@ -35,20 +35,7 @@ class ConvPlayer extends ChangeNotifier {
   Timer? _poll;
 
   /// The conversation's audio files and where each starts (seconds from its start).
-  (List<String>, List<double>) files() {
-    final h = c.heard, s = c.store;
-    final paths = <String>[], offsets = <double>[];
-    if (h == null || s == null) return (paths, offsets);
-    for (final seq in v.seqs) {
-      final ch = h.bySeq(seq);
-      if (ch == null) continue;
-      final f = s.fileFor(seq, (ch.start * 1e6).round());
-      if (f == null) continue;
-      paths.add(f.path);
-      offsets.add(ch.start - v.start);
-    }
-    return (paths, offsets);
-  }
+  (List<String>, List<double>) files() => c.audioFor(v);
 
   bool get available => audio.supported && files().$1.isNotEmpty;
 

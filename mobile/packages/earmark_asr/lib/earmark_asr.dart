@@ -150,3 +150,35 @@ class EarmarkAudio {
   static Future<PlayerState> seek(double at) async => PlayerState.from(await _ch.invokeMethod('seek', {'at': at}));
   static Future<PlayerState> state() async => PlayerState.from(await _ch.invokeMethod('state'));
 }
+
+class SpeakerInfo {
+  final List<double> embedding;
+  final double seconds;
+  final double energy;
+  const SpeakerInfo(this.embedding, this.seconds, this.energy);
+}
+
+class Diarization {
+  /// (start, end, speaker id), seconds from the start of the conversation
+  final List<(double, double, String)> turns;
+  final Map<String, SpeakerInfo> speakers;
+  const Diarization(this.turns, this.speakers);
+}
+
+/// Who spoke when (iOS, FluidAudio's offline diarizer).
+class EarmarkSpeakers {
+  static const _ch = MethodChannel('earmark/speakers');
+  static bool get supported => Platform.isIOS;
+
+  static Future<Diarization> diarize(List<String> paths, List<double> offsets) async {
+    final m = Map<String, dynamic>.from(await _ch.invokeMethod('diarize', {'paths': paths, 'offsets': offsets}) as Map);
+    return Diarization([
+      for (final g in (m['segments'] as List? ?? []))
+        ((g[0] as num).toDouble(), (g[1] as num).toDouble(), '${g[2]}'),
+    ], {
+      for (final e in (m['speakers'] as Map? ?? {}).entries)
+        '${e.key}': SpeakerInfo([for (final x in (e.value['embedding'] as List? ?? [])) (x as num).toDouble()],
+            (e.value['seconds'] as num?)?.toDouble() ?? 0, (e.value['energy'] as num?)?.toDouble() ?? 0),
+    });
+  }
+}

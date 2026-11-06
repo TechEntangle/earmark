@@ -100,19 +100,25 @@ final class AudioChannel: NSObject, AVAudioPlayerDelegate {
         player.currentTime = 0
     }
 
+    /// The chunks as one stretch of 16 kHz audio, each at its offset, silence in the gaps.
+    static func samples(paths: [String], offsets: [Double]) -> [Float] {
+        let rate = OpusChunk.sampleRate
+        var out: [Float] = []
+        for (i, p) in paths.enumerated() {
+            let at = i < offsets.count ? offsets[i] : Double(out.count) / Double(rate)
+            let want = Int(at * Double(rate))
+            if want > out.count {
+                out += [Float](repeating: 0, count: min(want - out.count, rate * 600))   // a gap: silence
+            }
+            out += (try? OpusChunk.decode(path: p)) ?? []
+        }
+        return out
+    }
+
     /// 16-bit PCM WAV, 16 kHz mono.
     static func writeWav(paths: [String], offsets: [Double], out: String) throws -> Double {
         let rate = OpusChunk.sampleRate
-        var samples: [Int16] = []
-        for (i, p) in paths.enumerated() {
-            let at = i < offsets.count ? offsets[i] : Double(samples.count) / Double(rate)
-            let want = Int(at * Double(rate))
-            if want > samples.count {
-                samples += [Int16](repeating: 0, count: min(want - samples.count, rate * 600))   // a gap: silence
-            }
-            let pcm = (try? OpusChunk.decode(path: p)) ?? []
-            samples += pcm.map { Int16(max(-1, min(1, $0)) * 32767) }
-        }
+        let samples: [Int16] = Self.samples(paths: paths, offsets: offsets).map { Int16(max(-1, min(1, $0)) * 32767) }
         var data = Data()
         func u32(_ v: UInt32) { var x = v.littleEndian; data.append(Data(bytes: &x, count: 4)) }
         func u16(_ v: UInt16) { var x = v.littleEndian; data.append(Data(bytes: &x, count: 2)) }
