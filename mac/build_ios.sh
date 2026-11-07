@@ -36,6 +36,7 @@ elif [ "$what" = "mac" ]; then
     osascript -e 'tell application id "app.earmark.mac" to quit' >/dev/null 2>&1; sleep 1
     rm -rf "$HOME/Applications/Earmark.app"
     ditto build/macos/Build/Products/Release/Earmark.app "$HOME/Applications/Earmark.app" && echo "Installed to ~/Applications/Earmark.app"
+    rm -rf build/macos/Build/Products/Release/Earmark.app   # one copy only, so Spotlight shows one Earmark
   fi
 else
   "$FLUTTER" build ios --release --no-codesign 2>&1
